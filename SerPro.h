@@ -29,11 +29,31 @@ struct callback {
 	void (*func)(void);
 };
 
-template<unsigned int MAX_FUNCTIONS>
+template<unsigned int number>
+struct number_of_bytes {
+	static unsigned int const bytes = number/256 > 1 ? 2 : 1;
+};
+
+template<unsigned int>
+struct best_storage_class {
+};
+
+template<>
+struct best_storage_class<1> {
+	typedef u_int8_t type;
+};
+
+template<>
+struct best_storage_class<2> {
+	typedef u_int16_t type;
+};
+
+
+template<unsigned int MAX_FUNCTIONS, unsigned int MAX_PACKET_SIZE>
 struct protocolImplementation
 {
 	static callback const callbacks[MAX_FUNCTIONS];
-	// Functions to handle protocol here
+	static unsigned int const maxPacketSize = MAX_PACKET_SIZE;
 	static unsigned int const maxFunctions = MAX_FUNCTIONS;
 
 	static void callFunction(int index, unsigned char *data)
@@ -41,7 +61,24 @@ struct protocolImplementation
 		size_t pos = 0;
 		callbacks[index].deserialize(data,pos,callbacks[index].func);
 	}
+    /* Serial processor state */
+	enum state {
+		SIZE,
+		SIZE2,
+		COMMAND,
+		PAYLOAD,
+		CKSUM
+	};
 
+    /* Buffer */
+	static unsigned char pBuf[MAX_PACKET_SIZE];
+	/* Checksum */
+	typedef u_int8_t checksum_t;
+	static checksum_t cksum;
+
+	static typename best_storage_class<number_of_bytes<MAX_PACKET_SIZE>::bytes>::type pBufPtr, pSize;
+	static u_int8_t command;
+	static enum state st;
 };
 
 
@@ -116,10 +153,10 @@ typedef void(*serpro_deserializer_type)(unsigned char*,size_t&,void(*)(void));
 
 #include "preprocessor_table.h"
 
-#define IMPLEMENT_SERPRO(num,name) \
-	static protocolImplementation<num> name; \
+#define IMPLEMENT_SERPRO(num,maxpacksize,name) \
+	static protocolImplementation<num,maxpacksize> name; \
 	template<> \
-	callback const protocolImplementation<num>::callbacks[] = { \
+	callback const protocolImplementation<num,maxpacksize>::callbacks[] = { \
 	DO_EXPAND(num) \
 	};
 

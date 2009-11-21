@@ -21,7 +21,7 @@ DECLARE_FUNCTION(3)(int a, char *b) {
 END_FUNCTION
 
 
-IMPLEMENT_SERPRO(4,myproto);
+IMPLEMENT_SERPRO(4,32,myproto);
 
 
 int main()

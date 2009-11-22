@@ -9,7 +9,7 @@ public:
 	};
 };
 
-DECLARE_SERPRO(4,32,SerialWrapper);
+DECLARE_SERPRO(4,32,SerialWrapper,SerPro);
 
 DECLARE_FUNCTION(0)(int a, int b, int c) {
 	std::cerr<<"METHOD 0: A(int) "<<a<<",B(int) "<<b<<",C(int) "<<c<<std::endl;
@@ -22,7 +22,7 @@ DECLARE_FUNCTION(1)(int a, int b) {
 }
 END_FUNCTION
 
-DECLARE_FUNCTION(2)(void) {
+DECLARE_FUNCTION(2)( FixedBuffer<10> buffer ) {
 	std::cerr<<"METHOD 2: Empty function"<<std::endl;
 	SerPro::send(2);
 }
@@ -35,7 +35,8 @@ DECLARE_FUNCTION(3)(int a, char *b) {
 END_FUNCTION
 
 
-IMPLEMENT_SERPRO(4,32,SerialWrapper,myproto);
+//IMPLEMENT_SERPRO(4,32,SerialWrapper,myproto);
+IMPLEMENT_SERPRO(4,SerPro);//4,32,SerialWrapper,myproto);
 
 
 int main()
@@ -45,11 +46,12 @@ int main()
 	myints[1] = -60;
 	myints[2] = 32178632;
 
+	char buffer[40];
 	SerPro::callFunction(0, (unsigned char*)&myints );
 	SerPro::callFunction(1, (unsigned char*)&myints );
-	SerPro::callFunction(2, NULL);
+	SerPro::callFunction(2, (unsigned char*)buffer);
 
-    char buffer[40];
+
 	sprintf(buffer,"%c%c%c%c%s", 1,1,1,0, "Hello");
 
 	SerPro::callFunction(3, (unsigned char*)buffer);

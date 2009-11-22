@@ -26,9 +26,14 @@
 
 
 // FIX THIS - We actually want buffer_size_t to be
-// computed buffer_size_t
+// computed prior. Because we might have either a 8-bit or 16-bit
+// Value.
 
 typedef uint8_t buffer_size_t;
+
+// Since GCC 4.3 we cannot have storage class qualifiers on template
+// specializations. However, prior versions require them. I know, it's
+// quite an ugly name for the macro...
 
 #if __GNUC__ > 4 || \
 	(__GNUC__ == 4 && (__GNUC_MINOR__ >= 3 ))
@@ -37,11 +42,16 @@ typedef uint8_t buffer_size_t;
 # define MAYBESTATIC static
 #endif
 
+// callback structure. One for each function we handle. We define both
+// deserializer and function to call.
 
 struct callback {
 	void (*deserialize)(unsigned char *,buffer_size_t&,void(*func)(void));
 	void (*func)(void);
 };
+
+// These four templates help us to choose a good storage class for
+// the receiving buffer size, based on the maximum message size.
 
 template<unsigned int number>
 struct number_of_bytes {
@@ -62,8 +72,17 @@ struct best_storage_class<2> {
 	typedef uint16_t type;
 };
 
+template<unsigned int BUFSIZE>
+struct FixedBuffer {
+	static unsigned int const size = BUFSIZE;
+	unsigned char *buffer;
+};
 
 
+/*
+ Our main class definition.
+ TODO: document
+ */
 template<unsigned int MAX_FUNCTIONS, unsigned int MAX_PACKET_SIZE, class Serial>
 struct protocolImplementation
 {
@@ -78,6 +97,7 @@ struct protocolImplementation
 		buffer_size_t pos = 0;
 		callbacks[index].deserialize(data,pos,callbacks[index].func);
 	}
+
 	/* Serial processor state */
 	enum state {
 		SIZE,
@@ -89,7 +109,7 @@ struct protocolImplementation
 
 	/* Buffer */
 	static unsigned char pBuf[MAX_PACKET_SIZE];
-	
+
 	typedef uint8_t checksum_t;
 	typedef uint8_t command_t;
 	typedef typename best_storage_class<number_of_bytes<MAX_PACKET_SIZE>::bytes>::type buffer_size_t;
@@ -185,6 +205,7 @@ struct protocolImplementation
 			st = SIZE;
 		}
 	}
+
 	static void processPacket()
 	{
 		buffer_size_t size = 0;
@@ -212,11 +233,53 @@ struct protocolImplementation
 };
 
 template<typename A>
-static A deserialize(unsigned char *b, buffer_size_t &pos) {
-	A value = *(A*)&b[pos];
-	pos+=sizeof(A);
-	return value;
-}
+static A deserialize(unsigned char *b, buffer_size_t &pos);
+
+/* To avoid possible errors with unknown structures, we define
+ simple deserialization for POT, and leave above undefined.
+ */
+
+template<>
+	MAYBESTATIC uint8_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		uint8_t value = *(uint8_t*)&b[pos];
+		pos+=sizeof(uint8_t);
+		return value;
+	};
+
+template<>
+	MAYBESTATIC int8_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		int8_t value = *(int8_t*)&b[pos];
+		pos+=sizeof(int8_t);
+		return value;
+	};
+
+template<>
+	MAYBESTATIC uint16_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		uint16_t value = *(uint16_t*)&b[pos];
+		pos+=sizeof(uint16_t);
+		return value;
+	};
+
+template<>
+	MAYBESTATIC int16_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		int8_t value = *(int8_t*)&b[pos];
+		pos+=sizeof(int16_t);
+		return value;
+	};
+
+template<>
+	MAYBESTATIC int32_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		int value = *(int*)&b[pos];
+		pos+=sizeof(int32_t);
+		return value;
+	};
+
+template<>
+	MAYBESTATIC uint32_t deserialize(unsigned char *b, buffer_size_t &pos) {
+		uint32_t value = *(int*)&b[pos];
+		pos+=sizeof(uint32_t);
+		return value;
+	};
 
 template<typename A>
 static void serialize(unsigned char *b, buffer_size_t &pos, A value) {
@@ -229,6 +292,15 @@ MAYBESTATIC char* deserialize(unsigned char *b, buffer_size_t &pos) {
 	char *value = (char*)&b[pos];
 	pos+=strlen(value);
 	return value;
+}
+
+// Not working ???
+template<typename A, unsigned int BUFSIZE>
+MAYBESTATIC FixedBuffer<BUFSIZE> deserialize(unsigned char *b, buffer_size_t &pos) {
+	FixedBuffer<BUFSIZE> buf;
+	buf.buffer=&b[pos];
+	pos+=BUFSIZE;
+	return buf;
 }
 
 template<>
@@ -249,6 +321,15 @@ struct deserializer<INDEX, void ()> {
 		func();
 	}
 };
+
+template<unsigned int INDEX, typename A>
+struct deserializer<INDEX, void (A)> {
+	static void handle(unsigned char *b, buffer_size_t &pos, void (*func)(A)) {
+		A val_a=deserialize<A>(b,pos);
+		func(val_a);
+	}
+};
+
 
 template<unsigned int INDEX, typename A,typename B>
 struct deserializer<INDEX, void (A,B)> {
@@ -288,15 +369,18 @@ struct functionHandler<x> { \
 typedef void(*serpro_function_type)(void);
 typedef void(*serpro_deserializer_type)(unsigned char*,buffer_size_t&,void(*)(void));
 
+#define DECLARE_SERPRO(num,maxpacksize,serial,name) \
+	typedef protocolImplementation<num,maxpacksize,serial> name;
+
 #define EXPAND_DELIM ,
 #define EXPAND_VALUE(NUMBER,MAX) \
 	{ (serpro_deserializer_type)&deserializer<MAX-NUMBER,typeof(functionHandler<MAX-NUMBER>::handle)>::handle,(serpro_function_type)&functionHandler<MAX-NUMBER>::handle }
 
 #include "preprocessor_table.h"
 
-#define DECLARE_SERPRO(num,maxpacksize,serial) \
-	typedef protocolImplementation<num,maxpacksize,serial> SerPro;
 
+/*
+ #define IMPLEMENT_SERPRO(num,maxpacksize,serial, name) \
 #define IMPLEMENT_SERPRO(num,maxpacksize,serial, name) \
 	template<> \
 	callback const protocolImplementation<num,maxpacksize,serial>::callbacks[] = { \
@@ -308,13 +392,18 @@ typedef void(*serpro_deserializer_type)(unsigned char*,buffer_size_t&,void(*)(vo
 	template<> protocolImplementation<num,maxpacksize,serial>::buffer_size_t protocolImplementation<num,maxpacksize,serial>::pBufPtr = 0; \
 	template<> protocolImplementation<num,maxpacksize,serial>::packet_size_t protocolImplementation<num,maxpacksize,serial>::pSize = 0; \
 	template<> unsigned char protocolImplementation<num,maxpacksize,serial>::pBuf[]={0}; \
+*/
 
-/*
- { (serpro_deserializer_type)&deserializer<0,typeof(functionHandler<0>::handle)>::handle,(serpro_function_type)&functionHandler<0>::handle }, \
- { (serpro_deserializer_type)&deserializer<1,typeof(functionHandler<1>::handle)>::handle,(serpro_function_type)&functionHandler<1>::handle }, \
- { (serpro_deserializer_type)&deserializer<2,typeof(functionHandler<2>::handle)>::handle,(serpro_function_type)&functionHandler<2>::handle }, \
- { (serpro_deserializer_type)&deserializer<3,typeof(functionHandler<3>::handle)>::handle,(serpro_function_type)&functionHandler<3>::handle } \
- */
-
+#define IMPLEMENT_SERPRO(num,name) \
+	template<> \
+	callback const name::callbacks[] = { \
+	DO_EXPAND(num) \
+	}; \
+	template<> enum name::state name::st = name::SIZE; \
+	template<> name::checksum_t name::cksum = 0; \
+	template<> name::command_t name::command = 0; \
+	template<> name::buffer_size_t name::pBufPtr = 0; \
+	template<> name::packet_size_t name::pSize = 0; \
+	template<> unsigned char name::pBuf[]={0};
 
 #endif

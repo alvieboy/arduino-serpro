@@ -1,5 +1,7 @@
-#include "SerPro.h"
 #include <iostream>
+#include "SerProHDLC.h"
+#include "SerProPacket.h"
+#include "SerPro.h"
 
 class SerialWrapper
 {
@@ -9,7 +11,12 @@ public:
 	};
 };
 
-DECLARE_SERPRO(4,32,SerialWrapper,SerPro);
+struct SerProConfig {
+	static unsigned int const MAX_FUNCTIONS = 4;
+	static unsigned int const MAX_PACKET_SIZE = 32;
+};
+
+DECLARE_SERPRO( SerProConfig, SerialWrapper, SerProPacket, SerPro);
 
 DECLARE_FUNCTION(0)(int a, int b, int c) {
 	std::cerr<<"METHOD 0: A(int) "<<a<<",B(int) "<<b<<",C(int) "<<c<<std::endl;
@@ -17,12 +24,14 @@ DECLARE_FUNCTION(0)(int a, int b, int c) {
 }
 END_FUNCTION
 
-DECLARE_FUNCTION(1)(int a, int b) {
-	std::cerr<<"METHOD 1: A(int) "<<a<<",B(int) "<<b<<std::endl;
+DECLARE_FUNCTION(1)( FixedBuffer<4> a,char *b) {
+	std::cerr<<"METHOD 0: FixedBuffer "<<(int)a[0]
+		<<" "<<(int)a[1]<<" "<<(int)a[2]<<" "<<(int)a[3];
+	std::cerr<<", String "<<b<<std::endl;
 }
 END_FUNCTION
 
-DECLARE_FUNCTION(2)( FixedBuffer<10> buffer ) {
+DECLARE_FUNCTION(2)( void ) {
 	std::cerr<<"METHOD 2: Empty function"<<std::endl;
 	SerPro::send(2);
 }
@@ -35,9 +44,9 @@ DECLARE_FUNCTION(3)(int a, char *b) {
 END_FUNCTION
 
 
-//IMPLEMENT_SERPRO(4,32,SerialWrapper,myproto);
-IMPLEMENT_SERPRO(4,SerPro);//4,32,SerialWrapper,myproto);
+IMPLEMENT_SERPRO(4,SerPro,SerProPacket);
 
+static SerPro serpro;
 
 int main()
 {
@@ -47,14 +56,14 @@ int main()
 	myints[2] = 32178632;
 
 	char buffer[40];
-	SerPro::callFunction(0, (unsigned char*)&myints );
-	SerPro::callFunction(1, (unsigned char*)&myints );
-	SerPro::callFunction(2, (unsigned char*)buffer);
+	serpro.callFunction(0, (unsigned char*)&myints,1 );
+	serpro.callFunction(2, (unsigned char*)buffer,1);
 
 
 	sprintf(buffer,"%c%c%c%c%s", 1,1,1,0, "Hello");
 
-	SerPro::callFunction(3, (unsigned char*)buffer);
+	serpro.callFunction(3, (unsigned char*)buffer,1);
+	serpro.callFunction(1, (unsigned char*)buffer,1);
 
-	SerPro::processData(0);
+	serpro.processData(0);
 }

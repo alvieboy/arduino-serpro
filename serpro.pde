@@ -1,4 +1,6 @@
 #include "SerPro.h"
+#include "SerProPacket.h"
+#include "SerProHDLC.h"
 
 class SerialWrapper
 {
@@ -10,10 +12,17 @@ public:
 
 // 4 functions
 // 32 bytes maximum receive buffer size
+
+struct SerProConfig {
+	static unsigned int const MAX_FUNCTIONS = 4;
+	static unsigned int const MAX_PACKET_SIZE = 32;
+};
+
 // SerialWrapper is class to handle tx
 // Name of class is SerPro
+// Protocol type is SerProPacket or SerProHDLC
 
-DECLARE_SERPRO(4,32,SerialWrapper,SerPro);
+DECLARE_SERPRO(SerProConfig,SerialWrapper,SerProPacket,SerPro);
 
 DECLARE_FUNCTION(0)(int a, int b, int c) {
 	SerPro::send(0, a+b+c);
@@ -37,16 +46,24 @@ DECLARE_FUNCTION(3)(int a, char *b) {
 END_FUNCTION
 
 
-// Implementation - 4 functions, name SerPro. Make sure this agrees
-// with DECLARE statement.
+// Implementation - 4 functions, name SerPro, protocol SerProHDLC.
+// Make sure this agrees with DECLARE statement.
 
-IMPLEMENT_SERPRO(4,SerPro);
+IMPLEMENT_SERPRO(4,SerPro,SerProPacket);
 
+const int ledPin = 13;
 
 void setup()
 {
+	Serial.begin(115200);
+	pinMode(ledPin,OUTPUT);
 }
+
+
 
 void loop()
 {
+	if (Serial.available()>0) {
+		SerPro::processData(Serial.read());
+	}
 }

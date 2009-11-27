@@ -1,3 +1,23 @@
+/*
+ SerPro - A serial protocol for arduino intercommunication
+ Copyright (C) 2009 Alvaro Lopes <alvieboy@alvie.com>
+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 3 of the License, or (at your option) any later version.
+
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General
+ Public License along with this library; if not, write to the
+ Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ Boston, MA 02110-1301 USA
+ */
+
 template<unsigned int MAX_PACKET_SIZE,
 	class Serial,
 	class Implementation>
@@ -26,11 +46,23 @@ public:
 	static buffer_size_t pBufPtr;
 	static checksum_t cksum,outCksum;
 	static command_t command,outCommand;
-	static packet_size_t pSize,pOutSize;
+	static packet_size_t lastPacketSize,pSize,pOutSize;
 
 	static enum state st;
 
-	static void startPacket(command_t command, packet_size_t size)
+	struct RawBuffer {
+		unsigned char *buffer;
+		uint8_t size;
+	};
+
+	static inline RawBuffer getRawBuffer()
+	{
+		RawBuffer r;
+		r.buffer = pBuf;
+		r.size = lastPacketSize;
+		return r;
+	}
+	static inline void startPacket(command_t command, packet_size_t size)
 	{
 		outCksum = command;
 		outCommand = command;
@@ -55,10 +87,17 @@ public:
 		packet_size_t i;
 		for (i=0;i<size;i++) {
 			outCksum^=buf[i];
-			Serial::write(buf[i]);
 		}
+		Serial::write(buf,size);
 	}
-	static void sendPostamble()
+
+	static inline void sendData(unsigned char c)
+	{
+		outCksum^=c;
+		Serial::write(c);
+	}
+
+	static inline void sendPostamble()
 	{
 		Serial::write(outCksum);
 	}
@@ -105,6 +144,7 @@ public:
 
 			command = bIn;
 			pSize--;
+			lastPacketSize=pSize;
 			if (pSize>0)
 				st = PAYLOAD;
 			else
@@ -135,6 +175,7 @@ public:
 	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::command=0; \
 	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::outCommand=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
+	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pOutSize=0; \
-    template<> SerPro::MyProtocol::state SerPro::MyProtocol::st=SIZE; \
+	template<> SerPro::MyProtocol::state SerPro::MyProtocol::st=SIZE; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};

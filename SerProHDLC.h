@@ -19,6 +19,12 @@
  */
 
 #include <inttypes.h>
+#include "crc16.h"
+
+#ifndef AVR
+#include <stdio.h>
+#define LOG(m,x...) printf(m,x);
+#endif
 
 template<unsigned int MAX_PACKET_SIZE,
 	class Serial,
@@ -32,16 +38,17 @@ public:
 
 	/* Buffer */
 	static unsigned char pBuf[MAX_PACKET_SIZE];
+	static CRC16_ccitt incrc,outcrc;
 
-	typedef uint8_t checksum_t;
+	typedef CRC16_ccitt::crc_t crc_t;
+
 	typedef uint8_t command_t;
 	typedef uint8_t buffer_size_t;
 	typedef uint16_t packet_size_t;
 
 	static buffer_size_t pBufPtr;
-	static checksum_t cksum, outCksum;
 	static command_t command, outCommand;
-	static packet_size_t pSize;
+	static packet_size_t pSize,lastPacketSize;
 	static bool unEscaping;
 	static bool inPacket;
 
@@ -49,6 +56,14 @@ public:
 		unsigned char *buffer;
 		uint8_t size;
 	};
+
+	static inline RawBuffer getRawBuffer()
+	{
+		RawBuffer r;
+		r.buffer = pBuf;
+		r.size = lastPacketSize;
+		return r;
+	}
 
 	static inline void sendByte(uint8_t byte)
 	{
@@ -62,18 +77,22 @@ public:
 	static void startPacket(command_t const command,packet_size_t len)
 	{
 		outCommand=command;
+		outcrc.reset();
+		pBufPtr=0;
 		//outSize = len;
 	}
 	static void sendPreamble()
 	{
-		cksum = outCommand;
 		Serial::write(frameFlag);
 		sendByte(outCommand);
+		outcrc.update(outCommand);
 	}
 
 	static void sendPostamble()
 	{
-		sendByte(cksum);
+		CRC16_ccitt::crc_t crc = outcrc.get();
+		sendByte(crc & 0xff);
+		sendByte(crc>>8);
 		Serial::write(frameFlag);
 	}
 
@@ -81,9 +100,15 @@ public:
 	{
 		packet_size_t i;
 		for (i=0;i<size;i++) {
-			cksum^=buf[i];
+			outcrc.update(buf[i]);
 			sendByte(buf[i]);
 		}
+	}
+
+	static void sendData(unsigned char c)
+	{
+		outcrc.update(c);
+		sendByte(c);
 	}
 
 	static void sendPacket(command_t const command, unsigned char * const buf, packet_size_t const size)
@@ -96,7 +121,27 @@ public:
 
 	static void preProcessPacket()
 	{
-		Implementation::processPacket(command,pBuf,pBufPtr);
+		/* Check CRC */
+		if (pBufPtr<3) {
+			/* Empty/erroneous packet */
+			LOG("Short packet received, len %u\n",pBufPtr);
+			return;
+		}
+		packet_size_t i;
+		incrc.reset();
+		for (i=0;i<pBufPtr-2;i++) {
+			incrc.update(pBuf[i]);
+		}
+		crc_t pcrc = *((crc_t*)&pBuf[pBufPtr-2]);
+		if (pcrc!=incrc.get()) {
+			/* CRC error */
+			LOG("CRC ERROR, expected 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
+			return;
+		}
+		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
+		lastPacketSize = pBufPtr-2;
+        LOG("Command is %u\n", pBuf[0]);
+		Implementation::processPacket(pBuf[0],pBuf+1,pBufPtr-3);
 	}
 
 	static void processData(uint8_t bIn)
@@ -111,13 +156,14 @@ public:
 			if (inPacket) {
 				/* End of packet */
 				if (pBufPtr) {
-                    preProcessPacket();
+					preProcessPacket();
 					inPacket = false;
 				}
 			} else {
 				/* Beginning of packet */
 				pBufPtr = 0;
-                inPacket = true;
+				inPacket = true;
+				incrc.reset();
 			}
 		} else {
 			if (unEscaping) {
@@ -134,10 +180,12 @@ public:
 
 #define IMPLEMENT_PROTOCOL_SerProHDLC(SerPro) \
 	template<> SerPro::MyProtocol::buffer_size_t SerPro::MyProtocol::pBufPtr=0; \
-	template<> SerPro::MyProtocol::checksum_t SerPro::MyProtocol::cksum=0; \
 	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::command=0; \
 	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::outCommand=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
+	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
+	template<> CRC16_ccitt SerPro::MyProtocol::incrc=CRC16_ccitt(); \
+	template<> CRC16_ccitt SerPro::MyProtocol::outcrc=CRC16_ccitt(); \
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};

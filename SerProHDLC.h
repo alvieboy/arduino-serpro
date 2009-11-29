@@ -24,6 +24,8 @@
 #ifndef AVR
 #include <stdio.h>
 #define LOG(m,x...) printf(m,x);
+#else
+#define LOG(m...)
 #endif
 
 template<unsigned int MAX_PACKET_SIZE,
@@ -60,7 +62,7 @@ public:
 	static inline RawBuffer getRawBuffer()
 	{
 		RawBuffer r;
-		r.buffer = pBuf;
+		r.buffer = pBuf+1;
 		r.size = lastPacketSize;
 		return r;
 	}
@@ -139,8 +141,8 @@ public:
 			return;
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
-		lastPacketSize = pBufPtr-2;
-        LOG("Command is %u\n", pBuf[0]);
+		lastPacketSize = pBufPtr-3;
+		LOG("Command is %u\n", pBuf[0]);
 		Implementation::processPacket(pBuf[0],pBuf+1,pBufPtr-3);
 	}
 

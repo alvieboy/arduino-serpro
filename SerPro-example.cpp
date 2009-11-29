@@ -57,7 +57,7 @@ void SerialWrapper::write(const unsigned char *buf, unsigned int size)
 int main()
 {
 	int myints[3];
-	myints[0] = 0x7E7E7E7E;
+	myints[0] = 0x7E7D7D7E; // Special case. Will cause lots of escapes
 	myints[1] = -60;
 	myints[2] = 32178632;
 

@@ -98,7 +98,7 @@ public:
 		Serial::write(frameFlag);
 	}
 
-	static void sendData(unsigned char * const buf, packet_size_t size)
+	static void sendData(const unsigned char * const buf, packet_size_t size)
 	{
 		packet_size_t i;
 		for (i=0;i<size;i++) {

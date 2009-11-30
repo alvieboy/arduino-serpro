@@ -144,8 +144,7 @@ struct protocolImplementation
 	}
 
 	template<typename A>
-		static void send(command_t command, A value) {
-			buffer_size_t length = 0;
+		static void send(command_t command, const A &value) {
 			MyProtocol::startPacket(command, sizeof(A));
 			MyProtocol::sendPreamble();
 			serialize<MyProtocol,A>(value);
@@ -153,8 +152,7 @@ struct protocolImplementation
 		};
 
 	template<typename A>
-		static void send(command_t command,RawBuffer value) {
-			buffer_size_t length = 0;
+		static void send(command_t command,const RawBuffer &value) {
 			MyProtocol::startPacket(command, value.size);
 			MyProtocol::sendPreamble();
 			MyProtocol::sendData(value.buffer,value.size);
@@ -162,8 +160,7 @@ struct protocolImplementation
 		};
 
 	template<typename A>
-		static void send(command_t command,VariableBuffer value) {
-			buffer_size_t length = 0;
+		static void send(command_t command,const VariableBuffer &value) {
 			MyProtocol::startPacket(command, value.size);
 			MyProtocol::sendPreamble();
 			MyProtocol::sendData(value.buffer,value.size);
@@ -172,7 +169,6 @@ struct protocolImplementation
 
 	template<typename A,typename B>
 	static void send(command_t command, A value_a, B value_b) {
-		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B));
 		MyProtocol::sendPreamble();
 		serialize<MyProtocol>(value_a);
@@ -181,8 +177,7 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C>
-	static void send(command_t command, A value_a, B value_b, C value_c) {
-		buffer_size_t length = 0;
+	static void send(command_t command, const A &value_a, const B &value_b, const C &value_c) {
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C));
 		MyProtocol::sendPreamble();
 		serialize<MyProtocol>(value_a);
@@ -192,7 +187,8 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C,typename D>
-	static void send(command_t command, A value_a, B value_b, C value_c,D value_d) {
+	static void send(command_t command, const A &value_a, const B &value_b,
+					 const C &value_c,const D &value_d) {
 		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
 		MyProtocol::sendPreamble();
@@ -204,7 +200,9 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C,typename D,typename E>
-	static void send(command_t command, A value_a, B value_b, C value_c,D value_d,E value_e) {
+	static void send(command_t command, const A &value_a, const B &value_b,
+					 const C &value_c,const D &value_d,
+					 const E &value_e) {
 		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E));
 		MyProtocol::sendPreamble();
@@ -217,7 +215,10 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C,typename D,typename E,typename F>
-	static void send(command_t command, A value_a, B value_b, C value_c,D value_d,E value_e,F value_f) {
+	static void send(command_t command, const A &value_a,
+					 const B &value_b, const C &value_c,
+					 const D &value_d, const E &value_e,
+					 const F &value_f) {
 		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
 		MyProtocol::sendPreamble();

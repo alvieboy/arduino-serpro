@@ -29,7 +29,7 @@
 // computed prior. Because we might have either a 8-bit or 16-bit
 // Value.
 
-typedef uint8_t buffer_size_t;
+typedef uint16_t buffer_size_t;
 
 // Since GCC 4.3 we cannot have storage class qualifiers on template
 // specializations. However, prior versions require them. I know, it's
@@ -42,35 +42,6 @@ typedef uint8_t buffer_size_t;
 # define MAYBESTATIC static
 #endif
 
-// callback structure. One for each function we handle. We define both
-// deserializer and function to call.
-
-struct callback {
-	void (*deserialize)(const unsigned char *,buffer_size_t&,void(*func)(void));
-	void (*func)(void);
-};
-
-// These four templates help us to choose a good storage class for
-// the receiving buffer size, based on the maximum message size.
-
-template<unsigned int number>
-struct number_of_bytes {
-	static unsigned int const bytes = number/256 > 1 ? 2 : 1;
-};
-
-template<unsigned int>
-struct best_storage_class {
-};
-
-template<>
-struct best_storage_class<1> {
-	typedef uint8_t type;
-};
-
-template<>
-struct best_storage_class<2> {
-	typedef uint16_t type;
-};
 
 /* Fixed-size buffer */
 
@@ -106,13 +77,20 @@ template <unsigned int,class Ser,class Implementation> class Protocol >
 struct protocolImplementation
 {
 	typedef Protocol<Config::MAX_PACKET_SIZE,Serial,protocolImplementation> MyProtocol;
-
-	static callback const callbacks[Config::MAX_FUNCTIONS];
-
 	/* Forwarded types */
 	typedef typename MyProtocol::command_t command_t;
 	typedef typename MyProtocol::buffer_size_t buffer_size_t;
 	typedef typename MyProtocol::RawBuffer RawBuffer;
+
+	// callback structure. One for each function we handle. We define both
+	// deserializer and function to call.
+
+	struct callback {
+		void (*deserialize)(const unsigned char *, buffer_size_t&, void(*func)(void));
+		void (*func)(void);
+	};
+
+	static callback const callbacks[Config::MAX_FUNCTIONS];
 
 	struct VariableBuffer{
 		const unsigned char *buffer;
@@ -144,7 +122,7 @@ struct protocolImplementation
 	}
 
 	template<typename A>
-		static void send(command_t command, const A &value) {
+		static void send(command_t command, A value) {
 			MyProtocol::startPacket(command, sizeof(A));
 			MyProtocol::sendPreamble();
 			serialize<MyProtocol,A>(value);
@@ -245,7 +223,7 @@ struct deserialize {
 template<>
 struct deserialize<uint8_t> {
 	static inline uint8_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint8_t value = *(uint8_t*)&b[pos];
+		uint8_t value = *((uint8_t*)&b[pos]);
 		pos+=sizeof(uint8_t);
 		return value;
 	}
@@ -305,6 +283,17 @@ struct deserialize<char*> {
 	}
 };
 
+
+template<class STRUCT>
+struct deserialize<const STRUCT*> {
+	static const STRUCT *deser(unsigned char * const b, buffer_size_t &pos) {
+		STRUCT *p = (STRUCT*)b;
+		pos+=sizeof(STRUCT);
+		return p;
+	}
+};
+
+
 template<unsigned int BUFSIZE>
 struct deserialize < FixedBuffer<BUFSIZE> > {
 	static FixedBuffer<BUFSIZE> deser(const unsigned char *b, buffer_size_t &pos) {
@@ -323,14 +312,14 @@ struct deserializer {
 
 template<unsigned int INDEX>
 struct deserializer<INDEX, void ()> {
-	static inline void handle(unsigned char *, buffer_size_t &pos, void (*func)(void)) {
+	static inline void handle(const unsigned char *, buffer_size_t &pos, void (*func)(void)) {
 		func();
 	}
 };
 
 template<unsigned int INDEX, typename A>
 struct deserializer<INDEX, void (A)> {
-	static inline void handle(unsigned char *b, buffer_size_t &pos, void (*func)(A)) {
+	static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A)) {
 		A val_a=deserialize<A>::deser(b,pos);
 		func(val_a);
 	}
@@ -339,7 +328,7 @@ struct deserializer<INDEX, void (A)> {
 
 template<unsigned int INDEX, typename A,typename B>
 struct deserializer<INDEX, void (A,B)> {
-	static inline void handle(unsigned char *b, buffer_size_t &pos, void (*func)(A,B)) {
+	static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A,B)) {
 		A val_a=deserialize<A>::deser(b,pos);
 		B val_b=deserialize<B>::deser(b,pos);
 		func(val_a,val_b);
@@ -348,7 +337,7 @@ struct deserializer<INDEX, void (A,B)> {
 
 template<unsigned int INDEX, typename A,typename B, typename C>
 struct deserializer<INDEX, void (A,B,C)> {
-	static inline void handle(unsigned char *b, buffer_size_t &pos, void (*func)(A, B, C)) {
+	static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A, B, C)) {
 		A val_a=deserialize<A>::deser(b,pos);
 		B val_b=deserialize<B>::deser(b,pos);
 		C val_c=deserialize<C>::deser(b,pos);
@@ -377,15 +366,12 @@ struct functionHandler<x> { \
 #define END_FUNCTION };
 
 
-typedef void(*serpro_function_type)(void);
-typedef void(*serpro_deserializer_type)(const unsigned char*,buffer_size_t&,void(*)(void));
-
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
 	template<unsigned int INDEX> \
 	struct deserializer<INDEX, void (const name::RawBuffer &)> { \
-	static void handle(unsigned char *b, buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
-		func( name::MyProtocol::getRawBuffer() ); \
+	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
+	func( name::MyProtocol::getRawBuffer() ); \
 	} \
 	};\
 
@@ -397,17 +383,13 @@ typedef void(*serpro_deserializer_type)(const unsigned char*,buffer_size_t&,void
 #include "preprocessor_table.h"
 
 #define IMPLEMENT_SERPRO(num,name,proto) \
+	typedef void(*serpro_function_type)(void); \
+	typedef void(*serpro_deserializer_type)(const unsigned char*, name::buffer_size_t& pos,void(*)(void)); \
 	template<> \
-	callback const name::callbacks[] = { \
+	name::callback const name::callbacks[] = { \
 	DO_EXPAND(num) \
 	}; \
 	IMPLEMENT_PROTOCOL_##proto(name)
 
-//template<> name::checksum_t name::cksum = 0; \
-//	template<> name::buffer_size_t name::pBufPtr = 0; \
-//	template<> name::packet_size_t name::pSize = 0; \
-//	template<> unsigned char name::pBuf[]={0};
-
-// template<> name::command_t name::command = 0;
 
 #endif

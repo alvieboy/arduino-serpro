@@ -23,10 +23,33 @@
 
 #ifndef AVR
 #include <stdio.h>
-#define LOG(m,x...) printf(m,x);
+#define LOG(m...) fprintf(stderr,m);
 #else
 #define LOG(m...)
 #endif
+
+// These four templates help us to choose a good storage class for
+// the receiving buffer size, based on the maximum message size.
+
+template<unsigned int number>
+struct number_of_bytes {
+	static unsigned int const bytes = number/256 > 1 ? 2 : 1;
+};
+
+template<unsigned int>
+struct best_storage_class {
+};
+
+template<>
+struct best_storage_class<1> {
+	typedef uint8_t type;
+};
+
+template<>
+struct best_storage_class<2> {
+	typedef uint16_t type;
+};
+
 
 template<unsigned int MAX_PACKET_SIZE,
 	class Serial,
@@ -45,7 +68,8 @@ public:
 	typedef CRC16_ccitt::crc_t crc_t;
 
 	typedef uint8_t command_t;
-	typedef uint8_t buffer_size_t;
+	//typedef typename best_storage_class< number_of_bytes<MAX_PACKET_SIZE>::bytes >::type buffer_size_t;
+    typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
 
 	static buffer_size_t pBufPtr;
@@ -54,16 +78,31 @@ public:
 	static bool unEscaping;
 	static bool inPacket;
 
+	/* HDLC control data */
+	uint8_t txSeqNum;        // Transmit sequence number
+	uint8_t rxNextSeqNum;    // Expected receive sequence number
+
+
 	struct RawBuffer {
 		unsigned char *buffer;
-		uint8_t size;
+		buffer_size_t size;
 	};
 
+	static inline void dumpPacket() { /* Debuggin only */
+		unsigned i;
+		LOG("Packet: %d bytes\n", lastPacketSize);
+		LOG("Dump (hex): ");
+		for (i=0; i<lastPacketSize; i++) {
+			LOG("0x%02X ", (unsigned)pBuf[i+1]);
+		}
+		LOG("\n");
+	}
 	static inline RawBuffer getRawBuffer()
 	{
 		RawBuffer r;
 		r.buffer = pBuf+1;
 		r.size = lastPacketSize;
+		LOG("getRawBuffer() : size %u %u\n", r.size,lastPacketSize);
 		return r;
 	}
 
@@ -142,12 +181,15 @@ public:
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
 		lastPacketSize = pBufPtr-3;
-		LOG("Command is %u\n", pBuf[0]);
+		LOG("Command is %u packet size %d\n", pBuf[0],lastPacketSize);
+		dumpPacket();
 		Implementation::processPacket(pBuf[0],pBuf+1,pBufPtr-3);
+		pBufPtr=0;
 	}
 
 	static void processData(uint8_t bIn)
 	{
+		LOG("Process data: %d\n",bIn);
 		if (bIn==escapeFlag) {
 			unEscaping=true;
 			return;
@@ -174,6 +216,7 @@ public:
 			}
 
 			if (pBufPtr<MAX_PACKET_SIZE) {
+				//				LOG("STORE: %02x (idx %d)\n",bIn,pBufPtr);
 				pBuf[pBufPtr++]=bIn;
 			}
 		}

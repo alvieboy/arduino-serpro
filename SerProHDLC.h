@@ -18,8 +18,12 @@
  Boston, MA 02110-1301 USA
  */
 
+#ifndef __SERPRO_HDLC__
+#define __SERPRO_HDLC__
+
 #include <inttypes.h>
 #include "crc16.h"
+
 
 #ifndef AVR
 #include <stdio.h>
@@ -68,8 +72,8 @@ public:
 	typedef CRC16_ccitt::crc_t crc_t;
 
 	typedef uint8_t command_t;
-	//typedef typename best_storage_class< number_of_bytes<MAX_PACKET_SIZE>::bytes >::type buffer_size_t;
-    typedef uint16_t buffer_size_t;
+	typedef typename best_storage_class< number_of_bytes<MAX_PACKET_SIZE>::bytes >::type buffer_size_t;
+	//typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
 
 	static buffer_size_t pBufPtr;
@@ -234,3 +238,5 @@ public:
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};
+
+#endif

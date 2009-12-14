@@ -140,7 +140,7 @@ struct protocolImplementation
 		};
 
 	template<typename A,typename B>
-	static void send(command_t command, A value_a, B value_b) {
+	static void send(command_t command, const A &value_a, const B &value_b) {
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B));
 		MyProtocol::sendPreamble();
 		serialize<MyProtocol>(value_a);

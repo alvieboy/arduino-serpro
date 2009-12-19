@@ -119,6 +119,54 @@ public:
 			Serial::write(byte);
 	}
 
+	/* Frame types */
+	enum frame_type {
+		FRAME_INFORMATION,
+		FRAME_SUPERVISORY,
+		FRAME_UNNUMBERED
+	};
+
+
+	/* Supervisory commands */
+	enum supervisory_command {
+		RR,
+		RNR,
+		REJ,
+		SREJ
+	};
+
+	enum unnumbered_command {
+		SNRM, // Set Normal Response Mode
+		UA,  // Unnumbered Acknowledgment
+		SARM, // Set Asynchronous Response Mode
+		DM, // Disconnected Mode
+		SABM, // Set Asynchronous Balanced Mode
+		RIM, // Request Initialization Mode
+		DISC, // Disconnect
+		RD, //  Request Disconnect
+		SNRME, // Set Normal Response Mode Extended
+		UI, // Unnumbered Information
+		SARME, // Set Asynchronous Response Mode Extended
+		SABME, // Set Asynchronous Balanced Mode Extended
+		FRMR, // Frame Reject
+		SIM, // Set Initialization Mode
+		UP, // Unnumbered Poll
+		XID, // Exchange identification
+		RSET, // Reset
+		TEST // Test
+
+	};
+
+	static inline void sendControlField(frame_type type)
+	{
+		switch(type) {
+		case FRAME_INFORMATION:
+		case FRAME_SUPERVISORY:
+		case FRAME_UNNUMBERED:
+			sendByte(0x3);
+		}
+	}
+
 	static void startPacket(command_t const command,packet_size_t len)
 	{
 		outCommand=command;

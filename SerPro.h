@@ -117,7 +117,10 @@ struct protocolImplementation
 	}
 
 	static inline void send(command_t command) {
-		MyProtocol::sendPacket(command, NULL, 0);
+		MyProtocol::startPacket(sizeof(command));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		MyProtocol::sendPostamble();
 	}
 
 	template<typename A>

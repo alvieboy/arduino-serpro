@@ -228,7 +228,7 @@ public:
 	static void preProcessPacket()
 	{
 		/* Check CRC */
-		if (pBufPtr<5) {
+		if (pBufPtr<4) {
 			/* Empty/erroneous packet */
 			LOG("Short packet received, len %u\n",pBufPtr);
 			return;
@@ -245,9 +245,9 @@ public:
 			return;
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
-		lastPacketSize = pBufPtr-5;
-
-		Implementation::processPacket(pBuf+3,pBufPtr-5);
+		lastPacketSize = pBufPtr-4;
+		LOG("Packet details: destination ID %u, control %02x\n", pBuf[0],pBuf[1]);
+		Implementation::processPacket(pBuf+2,pBufPtr-4);
 
 		pBufPtr=0;
 	}

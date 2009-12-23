@@ -210,7 +210,8 @@ struct protocolImplementation
 	}
 };
 
-	template<class SerPro,typename A>
+
+template<class SerPro,typename A>
 	struct deserialize {
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 		static A deser(const unsigned char *b, buffer_size_t &pos);
@@ -313,23 +314,22 @@ struct protocolImplementation
 			}
 		};
 
-	template<class SerPro,unsigned int INDEX, typename B>
+	template<class SerPro, typename B>
 	struct deserializer {
-		static int const index = INDEX;
 		typedef B func_type;
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 	};
 
-	template<class SerPro,unsigned int INDEX>
-	struct deserializer<SerPro,INDEX, void ()> {
+	template<class SerPro>
+	struct deserializer<SerPro, void ()> {
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 			static inline void handle(const unsigned char *,buffer_size_t &pos, void (*func)(void)) {
 				func();
 			}
 		};
 
-	template<class SerPro,unsigned int INDEX, typename A>
-	struct deserializer<SerPro,INDEX, void (A)> {
+	template<class SerPro, typename A>
+	struct deserializer<SerPro, void (A)> {
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 		static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A)) {
 			A val_a=deserialize<SerPro,A>::deser(b,pos);
@@ -338,8 +338,8 @@ struct protocolImplementation
 	};
 
 
-	template<class SerPro,unsigned int INDEX, typename A,typename B>
-	struct deserializer<SerPro,INDEX, void (A,B)> {
+	template<class SerPro, typename A,typename B>
+	struct deserializer<SerPro, void (A,B)> {
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 		static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A,B)) {
 			A val_a=deserialize<SerPro,A>::deser(b,pos);
@@ -348,8 +348,8 @@ struct protocolImplementation
 		}
 	};
 
-	template<class SerPro, unsigned int INDEX, typename A,typename B, typename C>
-	struct deserializer<SerPro,INDEX, void (A,B,C)> {
+	template<class SerPro, typename A,typename B, typename C>
+	struct deserializer<SerPro, void (A,B,C)> {
 		typedef typename SerPro::buffer_size_t buffer_size_t;
 		static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A, B, C)) {
 			A val_a=deserialize<SerPro,A>::deser(b,pos);
@@ -367,9 +367,6 @@ struct protocolImplementation
 		};
 
 
-
-
-
 #define DECLARE_FUNCTION(x) \
 	template<> \
 	struct functionHandler<x> { \
@@ -385,8 +382,8 @@ struct protocolImplementation
 
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
-	template<unsigned int INDEX> \
-	struct deserializer<name, INDEX, void (const name::RawBuffer &)> { \
+	template<> \
+	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
 	func( name::MyProtocol::getRawBuffer() ); \
 	} \
@@ -395,7 +392,7 @@ struct protocolImplementation
 
 #define EXPAND_DELIM ,
 #define EXPAND_VALUE(NUMBER,MAX) \
-	{ (serpro_deserializer_type)&deserializer<SerPro,MAX-NUMBER,typeof(functionHandler<MAX-NUMBER>::handle)>::handle,(serpro_function_type)&functionHandler<MAX-NUMBER>::handle }
+	{ (serpro_deserializer_type)&deserializer<SerPro,typeof(functionHandler<MAX-NUMBER>::handle)>::handle,(serpro_function_type)&functionHandler<MAX-NUMBER>::handle }
 
 #include "preprocessor_table.h"
 

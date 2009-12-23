@@ -36,6 +36,11 @@
 # define MAYBESTATIC static
 #endif
 
+#ifdef AVR
+#include <avr/pgmspace.h>
+#else
+#define PROGMEM
+#endif
 
 /* Fixed-size buffer */
 
@@ -84,12 +89,13 @@ struct protocolImplementation
 		void (*func)(void);
 	};
 
-	static callback const callbacks[Config::MAX_FUNCTIONS];
+	static callback const PROGMEM callbacks[Config::MAX_FUNCTIONS];
 
 	struct VariableBuffer{
 		const unsigned char *buffer;
 		unsigned int size;
-		VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {}
+		VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {
+		}
 	};
 
 	static inline void callFunction(int index, const unsigned char *data, buffer_size_t size)
@@ -140,7 +146,7 @@ struct protocolImplementation
 		};
 
 	template<typename A,typename B>
-	static void send(command_t command, const A &value_a, const B &value_b) {
+	static void send(command_t command, const A value_a, const B value_b) {
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B));
 		MyProtocol::sendPreamble();
 		serialize<MyProtocol>(value_a);
@@ -149,7 +155,7 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C>
-	static void send(command_t command, const A &value_a, const B &value_b, const C &value_c) {
+	static void send(command_t command, const A value_a, const B value_b, const C value_c) {
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C));
 		MyProtocol::sendPreamble();
 		serialize<MyProtocol>(value_a);
@@ -159,8 +165,8 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C,typename D>
-	static void send(command_t command, const A &value_a, const B &value_b,
-					 const C &value_c,const D &value_d) {
+	static void send(command_t command, const A value_a, const B value_b,
+					 const C value_c,const D value_d) {
 		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
 		MyProtocol::sendPreamble();
@@ -187,10 +193,10 @@ struct protocolImplementation
 	}
 
 	template<typename A,typename B,typename C,typename D,typename E,typename F>
-	static void send(command_t command, const A &value_a,
-					 const B &value_b, const C &value_c,
-					 const D &value_d, const E &value_e,
-					 const F &value_f) {
+	static void send(command_t command, const A value_a,
+					 const B value_b, const C value_c,
+					 const D value_d, const E value_e,
+					 const F value_f) {
 		buffer_size_t length = 0;
 		MyProtocol::startPacket(command, sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
 		MyProtocol::sendPreamble();

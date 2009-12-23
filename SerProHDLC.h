@@ -192,6 +192,7 @@ public:
 	static void sendData(const unsigned char * const buf, packet_size_t size)
 	{
 		packet_size_t i;
+		LOG("Sending %d payload\n",size);
 		for (i=0;i<size;i++) {
 			outcrc.update(buf[i]);
 			sendByte(buf[i]);
@@ -234,7 +235,7 @@ public:
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
 		lastPacketSize = pBufPtr-3;
 		LOG("Command is %u packet size %d\n", pBuf[0],lastPacketSize);
-		dumpPacket();
+		//dumpPacket();
 		Implementation::processPacket(pBuf[0],pBuf+1,pBufPtr-3);
 		pBufPtr=0;
 	}

@@ -11,8 +11,9 @@ public:
 };
 
 struct SerProConfig {
-	static unsigned int const MAX_FUNCTIONS = 4;
-	static unsigned int const MAX_PACKET_SIZE = 32;
+	static unsigned int const maxFunctions = 4;
+	static unsigned int const maxPacketSize = 32;
+	static unsigned int const stationId = 3; /* Only for HDLC */
 };
 
 DECLARE_SERPRO( SerProConfig, SerialWrapper, SerProHDLC, SerPro);

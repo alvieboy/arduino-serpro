@@ -18,7 +18,7 @@
  Boston, MA 02110-1301 USA
  */
 
-template<unsigned int MAX_PACKET_SIZE,
+template<class Config,
 	class Serial,
 	class Implementation>
 	class SerProPacket
@@ -35,7 +35,7 @@ public:
 	};
 
 	/* Buffer */
-	static unsigned char pBuf[MAX_PACKET_SIZE];
+	static unsigned char pBuf[Config::maxPacketSize];
 
 	typedef uint8_t checksum_t;
 	typedef uint8_t command_t;
@@ -125,7 +125,7 @@ public:
 				st = SIZE2;
 			} else {
 				pSize = bIn;
-				if (bIn>MAX_PACKET_SIZE)
+				if (bIn>Config::maxPacketSize)
 					break;
 				pBufPtr = 0;
 				st = COMMAND;
@@ -134,7 +134,7 @@ public:
 
 		case SIZE2:
 			pSize += bIn;
-			if (bIn>MAX_PACKET_SIZE)
+			if (bIn>Config::maxPacketSize)
 				break;
 			pBufPtr = 0;
 			st = COMMAND;

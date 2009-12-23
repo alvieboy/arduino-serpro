@@ -55,10 +55,7 @@ struct best_storage_class<2> {
 };
 
 
-template<unsigned int MAX_PACKET_SIZE,
-	class Serial,
-	class Implementation>
-	class SerProHDLC
+template<class Config,class Serial,class Implementation> class SerProHDLC
 {
 public:
 	static uint8_t const frameFlag = 0x7E;
@@ -66,26 +63,31 @@ public:
 	static uint8_t const escapeXOR = 0x20;
 
 	/* Buffer */
-	static unsigned char pBuf[MAX_PACKET_SIZE];
+	static unsigned char pBuf[Config::maxPacketSize];
 	static CRC16_ccitt incrc,outcrc;
 
 	typedef CRC16_ccitt::crc_t crc_t;
 
 	typedef uint8_t command_t;
-	typedef typename best_storage_class< number_of_bytes<MAX_PACKET_SIZE>::bytes >::type buffer_size_t;
+
+
+	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
 	//typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
 
 	static buffer_size_t pBufPtr;
-	static command_t command, outCommand;
 	static packet_size_t pSize,lastPacketSize;
-	static bool unEscaping;
-	static bool inPacket;
+
+	/* HDLC parameters extracted from frame */
+	static uint8_t inAddressField;
+	static uint8_t inControlField;
 
 	/* HDLC control data */
-	uint8_t txSeqNum;        // Transmit sequence number
-	uint8_t rxNextSeqNum;    // Expected receive sequence number
+	static uint8_t txSeqNum;        // Transmit sequence number
+	static uint8_t rxNextSeqNum;    // Expected receive sequence number
 
+	static bool unEscaping;
+    static bool inPacket;
 
 	struct RawBuffer {
 		unsigned char *buffer;
@@ -104,7 +106,7 @@ public:
 	static inline RawBuffer getRawBuffer()
 	{
 		RawBuffer r;
-		r.buffer = pBuf+1;
+		r.buffer = pBuf+3;
 		r.size = lastPacketSize;
 		LOG("getRawBuffer() : size %u %u\n", r.size,lastPacketSize);
 		return r;
@@ -157,28 +159,24 @@ public:
 
 	};
 
-	static inline void sendControlField(frame_type type)
+	static inline void sendInformationControlField()
 	{
-		switch(type) {
-		case FRAME_INFORMATION:
-		case FRAME_SUPERVISORY:
-		case FRAME_UNNUMBERED:
-			sendByte(0x3);
-		}
+		sendByte( txSeqNum<<1 | rxNextSeqNum<<5 );
+		outcrc.update( txSeqNum<<1 | rxNextSeqNum<<5 );
 	}
 
-	static void startPacket(command_t const command,packet_size_t len)
+	static void startPacket(packet_size_t len)
 	{
-		outCommand=command;
 		outcrc.reset();
 		pBufPtr=0;
-		//outSize = len;
 	}
+
 	static void sendPreamble()
 	{
-		Serial::write(frameFlag);
-		sendByte(outCommand);
-		outcrc.update(outCommand);
+		Serial::write( frameFlag );
+		sendByte( (uint8_t)Config::stationId );
+		outcrc.update( (uint8_t)Config::stationId );
+		sendInformationControlField();
 	}
 
 	static void sendPostamble()
@@ -187,6 +185,8 @@ public:
 		sendByte(crc & 0xff);
 		sendByte(crc>>8);
 		Serial::write(frameFlag);
+		txSeqNum++;
+		txSeqNum&=0x7; // Cap at 3-bits only.
 	}
 
 	static void sendData(const unsigned char * const buf, packet_size_t size)
@@ -207,8 +207,20 @@ public:
 
 	static void sendPacket(command_t const command, unsigned char * const buf, packet_size_t const size)
 	{
-		startPacket(command,size);
+		startPacket(size);
 		sendPreamble();
+		outcrc.update( command );
+		sendData(command);
+		sendData(buf,size);
+		sendPostamble();
+	}
+
+	static void sendCommandPacket(command_t const command, unsigned char * const buf, packet_size_t const size)
+	{
+		startPacket(size);
+		sendPreamble();
+		outcrc.update( command );
+		sendData(command);
 		sendData(buf,size);
 		sendPostamble();
 	}
@@ -216,7 +228,7 @@ public:
 	static void preProcessPacket()
 	{
 		/* Check CRC */
-		if (pBufPtr<3) {
+		if (pBufPtr<5) {
 			/* Empty/erroneous packet */
 			LOG("Short packet received, len %u\n",pBufPtr);
 			return;
@@ -233,10 +245,10 @@ public:
 			return;
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
-		lastPacketSize = pBufPtr-3;
-		LOG("Command is %u packet size %d\n", pBuf[0],lastPacketSize);
-		//dumpPacket();
-		Implementation::processPacket(pBuf[0],pBuf+1,pBufPtr-3);
+		lastPacketSize = pBufPtr-5;
+
+		Implementation::processPacket(pBuf+3,pBufPtr-5);
+
 		pBufPtr=0;
 	}
 
@@ -268,9 +280,10 @@ public:
 				unEscaping=false;
 			}
 
-			if (pBufPtr<MAX_PACKET_SIZE) {
-				//				LOG("STORE: %02x (idx %d)\n",bIn,pBufPtr);
+			if (pBufPtr<Config::maxPacketSize) {
 				pBuf[pBufPtr++]=bIn;
+			} else {
+				// Process overrun error
 			}
 		}
 	}
@@ -278,8 +291,8 @@ public:
 
 #define IMPLEMENT_PROTOCOL_SerProHDLC(SerPro) \
 	template<> SerPro::MyProtocol::buffer_size_t SerPro::MyProtocol::pBufPtr=0; \
-	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::command=0; \
-	template<> SerPro::MyProtocol::command_t SerPro::MyProtocol::outCommand=0; \
+	template<> uint8_t SerPro::MyProtocol::txSeqNum=0; \
+    template<> uint8_t SerPro::MyProtocol::rxNextSeqNum=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
 	template<> CRC16_ccitt SerPro::MyProtocol::incrc=CRC16_ccitt(); \

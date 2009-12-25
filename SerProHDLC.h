@@ -18,6 +18,13 @@
  Boston, MA 02110-1301 USA
  */
 
+/*
+
+ Implementation according to ISO4335 extracted from:
+ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
+
+ */
+
 #ifndef __SERPRO_HDLC__
 #define __SERPRO_HDLC__
 
@@ -64,9 +71,11 @@ public:
 
 	/* Buffer */
 	static unsigned char pBuf[Config::maxPacketSize];
-	static CRC16_ccitt incrc,outcrc;
 
-	typedef CRC16_ccitt::crc_t crc_t;
+	typedef CRC16 CRCTYPE;
+	typedef CRCTYPE::crc_t crc_t;
+
+	static CRCTYPE incrc,outcrc;
 
 	typedef uint8_t command_t;
 
@@ -92,6 +101,38 @@ public:
 	struct RawBuffer {
 		unsigned char *buffer;
 		buffer_size_t size;
+	};
+
+	struct HDLC_header {
+		uint8_t address;
+		union {
+			struct {
+				uint8_t flag: 1;   /* Always zero */
+				uint8_t txseq: 3;  /* TX sequence number */
+				uint8_t poll: 1;   /* poll/final */
+				uint8_t rxseq: 3;  /* RX sequence number */
+			} iframe;
+
+			struct {
+				uint8_t flag: 2;   /* '1''0' for S-frame */
+				uint8_t function: 2; /* Supervisory function */
+				uint8_t poll: 1;     /* Poll/Final */
+				uint8_t seq: 3;    /* Sequence number */
+			} sframe;
+
+			struct {
+				uint8_t flag: 2;   /* '1''1' for U-Frame */
+				uint8_t modifier: 2; /* Modifier bits */
+				uint8_t poll: 1;   /* Poll/Final */
+				uint8_t function: 3; /* Function */
+			} uframe;
+
+			struct {
+				uint8_t flag: 2;  /* LSB-MSB:  0X: I-frame, 10: S-Frame, 11: U-Frame */
+				uint8_t unused: 6;
+			} frame_type;
+
+		} control;
 	};
 
 	static inline void dumpPacket() { /* Debuggin only */
@@ -131,31 +172,44 @@ public:
 
 	/* Supervisory commands */
 	enum supervisory_command {
-		RR,
-		RNR,
-		REJ,
-		SREJ
+		RR  =  0x0,   // Receiver ready
+		RNR =  0x1,   // Receiver not ready
+		REJ =  0x2,   // Reject
+		SREJ = 0x3    // Selective-reject
 	};
 
+
+	/* This field is actually a combination of
+	 modifier plus function type. We number then
+	 according to concatenation of both */
 	enum unnumbered_command {
-		SNRM, // Set Normal Response Mode
-		UA,  // Unnumbered Acknowledgment
+		UI          = 0x00, // 00-000 Unnumbered Information
+		SNRM        = 0x01, // 00-001 Set Normal Response Mode
+		RD          = 0x02, // 00-010 Request Disconnect
+        // Not used 00-011
+		UP          = 0x04, // 00-100 Unnumbered Poll
+		// Not used 00-101
+		UA          = 0x06, // 00-110 Unnumbered Acknowledgment
+		TEST        = 0x07, // 00-111 Test
+        // All 01-XXX are not used
+		RIM         = 0x10, // 10-000 Request Initialization Mode
+		FRMR        = 0x11, // 10-001 Frame Reject
+		SIM         = 0x12,  // 10-010 Set Initialization Mode
+		// Not used any other 10-XXX
+
 		SARM, // Set Asynchronous Response Mode
 		DM, // Disconnected Mode
 		SABM, // Set Asynchronous Balanced Mode
-		RIM, // Request Initialization Mode
-		DISC, // Disconnect
-		RD, //  Request Disconnect
+		
+	//	RD, //  Request Disconnect
 		SNRME, // Set Normal Response Mode Extended
-		UI, // Unnumbered Information
+
 		SARME, // Set Asynchronous Response Mode Extended
 		SABME, // Set Asynchronous Balanced Mode Extended
-		FRMR, // Frame Reject
-		SIM, // Set Initialization Mode
-		UP, // Unnumbered Poll
+
+		
 		XID, // Exchange identification
-		RSET, // Reset
-		TEST // Test
+		RSET // Reset
 
 	};
 
@@ -233,6 +287,10 @@ public:
 			LOG("Short packet received, len %u\n",pBufPtr);
 			return;
 		}
+
+		/* Make sure packet is meant for us. We can safely check
+		 this before actually computing CRC */
+
 		packet_size_t i;
 		incrc.reset();
 		for (i=0;i<pBufPtr-2;i++) {
@@ -295,8 +353,8 @@ public:
     template<> uint8_t SerPro::MyProtocol::rxNextSeqNum=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
-	template<> CRC16_ccitt SerPro::MyProtocol::incrc=CRC16_ccitt(); \
-	template<> CRC16_ccitt SerPro::MyProtocol::outcrc=CRC16_ccitt(); \
+	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::incrc=CRCTYPE(); \
+	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::outcrc=CRCTYPE(); \
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};

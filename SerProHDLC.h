@@ -72,7 +72,7 @@ public:
 	/* Buffer */
 	static unsigned char pBuf[Config::maxPacketSize];
 
-	typedef CRC16 CRCTYPE;
+	typedef CRC16_rfc1549 CRCTYPE;
 	typedef CRCTYPE::crc_t crc_t;
 
 	static CRCTYPE incrc,outcrc;

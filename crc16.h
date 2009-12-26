@@ -46,4 +46,21 @@ struct CRC16 {
 	}
 };
 
+struct CRC16_rfc1549 {
+
+	typedef uint16_t crc_t;
+
+	crc_t crc;
+
+	inline void reset() {
+		crc = 0xffff;
+	}
+
+	void update(uint8_t data);
+
+	inline crc_t get() {
+		return ~crc;
+	}
+};
+
 #endif

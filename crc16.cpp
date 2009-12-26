@@ -29,3 +29,16 @@ void CRC16::update(uint8_t data)
 	crc = _crc16_update(crc,data);
 #endif
 }
+
+void CRC16_rfc1549::update(uint8_t data)
+{
+	uint8_t i;
+	crc ^= data;
+	for (i = 0; i < 8; ++i)
+	{
+		if (crc & 1)
+			crc = (crc >> 1) ^ 0x8408;
+		else
+			crc = (crc >> 1);
+	}
+}

@@ -2,6 +2,7 @@
 #include "SerProHDLC.h"
 #include "SerProPacket.h"
 #include "SerPro.h"
+#include "crc16.h"
 
 class SerialWrapper
 {

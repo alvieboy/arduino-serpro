@@ -96,6 +96,7 @@ public:
 	static uint8_t rxNextSeqNum;    // Expected receive sequence number
 
 	static bool unEscaping;
+	static bool forceEscaping;
     static bool inPacket;
 
 	struct RawBuffer {
@@ -135,6 +136,12 @@ public:
 		} control;
 	};
 
+
+	static inline void setForceEscape(bool a)
+	{
+		forceEscaping=a;
+	}
+
 	static inline void dumpPacket() { /* Debuggin only */
 		unsigned i;
 		LOG("Packet: %d bytes\n", lastPacketSize);
@@ -155,7 +162,7 @@ public:
 
 	static inline void sendByte(uint8_t byte)
 	{
-		if (byte==frameFlag || byte==escapeFlag) {
+		if (byte==frameFlag || byte==escapeFlag || forceEscaping) {
 			Serial::write(escapeFlag);
 			Serial::write(byte ^ escapeXOR);
 		} else
@@ -215,8 +222,10 @@ public:
 
 	static inline void sendInformationControlField()
 	{
-		sendByte( txSeqNum<<1 | rxNextSeqNum<<5 );
-		outcrc.update( txSeqNum<<1 | rxNextSeqNum<<5 );
+		//sendByte( txSeqNum<<1 | rxNextSeqNum<<5 );
+		//outcrc.update( txSeqNum<<1 | rxNextSeqNum<<5 );
+		sendByte(0x3);
+		outcrc.update(0x3);
 	}
 
 	static void startPacket(packet_size_t len)
@@ -239,6 +248,7 @@ public:
 		sendByte(crc & 0xff);
 		sendByte(crc>>8);
 		Serial::write(frameFlag);
+		Serial::flush();
 		txSeqNum++;
 		txSeqNum&=0x7; // Cap at 3-bits only.
 	}
@@ -350,12 +360,13 @@ public:
 #define IMPLEMENT_PROTOCOL_SerProHDLC(SerPro) \
 	template<> SerPro::MyProtocol::buffer_size_t SerPro::MyProtocol::pBufPtr=0; \
 	template<> uint8_t SerPro::MyProtocol::txSeqNum=0; \
-    template<> uint8_t SerPro::MyProtocol::rxNextSeqNum=0; \
+	template<> uint8_t SerPro::MyProtocol::rxNextSeqNum=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
 	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::incrc=CRCTYPE(); \
 	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::outcrc=CRCTYPE(); \
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
+	template<> bool SerPro::MyProtocol::forceEscaping = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};
 

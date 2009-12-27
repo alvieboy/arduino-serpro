@@ -9,6 +9,7 @@ class SerialWrapper
 public:
 	static void write(uint8_t v);
 	static void write(const unsigned char *buf, unsigned int size);
+	static void flush();
 };
 
 struct SerProConfig {
@@ -52,6 +53,10 @@ void SerialWrapper::write(uint8_t v)
 	SerPro::processData(v);
 }
 
+void SerialWrapper::flush()
+{
+	fflush(stdout);
+}
 void SerialWrapper::write(const unsigned char *buf, unsigned int size)
 {
 }

@@ -96,7 +96,7 @@ public:
 	static uint8_t rxNextSeqNum;    // Expected receive sequence number
 
 	static bool unEscaping;
-	static bool forceEscaping;
+	static bool forceEscapingLow;
     static bool inPacket;
 
 	struct RawBuffer {
@@ -137,9 +137,9 @@ public:
 	};
 
 
-	static inline void setForceEscape(bool a)
+	static inline void setEscapeLow(bool a)
 	{
-		forceEscaping=a;
+		forceEscapingLow=a;
 	}
 
 	static inline void dumpPacket() { /* Debuggin only */
@@ -162,7 +162,7 @@ public:
 
 	static inline void sendByte(uint8_t byte)
 	{
-		if (byte==frameFlag || byte==escapeFlag || forceEscaping) {
+		if (byte==frameFlag || byte==escapeFlag || (forceEscapingLow&&byte<0x20)) {
 			Serial::write(escapeFlag);
 			Serial::write(byte ^ escapeXOR);
 		} else
@@ -366,7 +366,7 @@ public:
 	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::incrc=CRCTYPE(); \
 	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::outcrc=CRCTYPE(); \
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
-	template<> bool SerPro::MyProtocol::forceEscaping = false; \
+	template<> bool SerPro::MyProtocol::forceEscapingLow = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};
 

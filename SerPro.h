@@ -84,9 +84,12 @@ struct protocolImplementation
 	// callback structure. One for each function we handle. We define both
 	// deserializer and function to call.
 
+	typedef  void (*func_type)(void);
+	typedef  void (*deserialize_func_type)(const unsigned char *, buffer_size_t&, func_type);
+
 	struct callback {
-		void (*deserialize)(const unsigned char *, buffer_size_t&, void(*func)(void));
-		void (*func)(void);
+		deserialize_func_type deserialize;
+		func_type func;
 	};
 
 	static callback const PROGMEM callbacks[Config::maxFunctions];
@@ -106,7 +109,13 @@ struct protocolImplementation
 	static inline void callFunction(int index, const unsigned char *data, buffer_size_t size)
 	{
 		buffer_size_t pos = 0;
+#ifdef AVR
+		deserialize_func_type deserialize = (deserialize_func_type)pgm_read_word(&callbacks[index].deserialize);
+		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
+		deserialize(data,pos,func);
+#else
 		callbacks[index].deserialize(data,pos,callbacks[index].func);
+#endif
 	}
 
 	static inline void processPacket(const unsigned char *buf,

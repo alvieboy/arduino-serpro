@@ -98,6 +98,11 @@ struct protocolImplementation
 		}
 	};
 
+	static inline void deferReply()
+	{
+		MyProtocol::deferReply();
+	}
+
 	static inline void callFunction(int index, const unsigned char *data, buffer_size_t size)
 	{
 		buffer_size_t pos = 0;

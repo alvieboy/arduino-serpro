@@ -372,6 +372,30 @@ template<class SerPro,typename A>
 		}
 	};
 
+	template<class SerPro, typename A,typename B, typename C,typename D>
+	struct deserializer<SerPro, void (A,B,C,D)> {
+		typedef typename SerPro::buffer_size_t buffer_size_t;
+		static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A, B, C, D)) {
+			A val_a=deserialize<SerPro,A>::deser(b,pos);
+			B val_b=deserialize<SerPro,B>::deser(b,pos);
+			C val_c=deserialize<SerPro,C>::deser(b,pos);
+			D val_d=deserialize<SerPro,D>::deser(b,pos);
+			func(val_a, val_b, val_c, val_d);
+		}
+	};
+
+	template<class SerPro, typename A,typename B, typename C,typename D,typename E>
+	struct deserializer<SerPro, void (A,B,C,D,E)> {
+		typedef typename SerPro::buffer_size_t buffer_size_t;
+		static inline void handle(const unsigned char *b, buffer_size_t &pos, void (*func)(A, B, C, D, E)) {
+			A val_a=deserialize<SerPro,A>::deser(b,pos);
+			B val_b=deserialize<SerPro,B>::deser(b,pos);
+			C val_c=deserialize<SerPro,C>::deser(b,pos);
+			D val_d=deserialize<SerPro,D>::deser(b,pos);
+			E val_e=deserialize<SerPro,E>::deser(b,pos);
+			func(val_a, val_b, val_c, val_d, val_e);
+		}
+	};
 
 	template<unsigned int>
 		struct functionHandler {

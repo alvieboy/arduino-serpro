@@ -220,7 +220,7 @@ public:
 		XID         = 0xAC, // 11-101 Exchange identification
 		SABME       = 0x6C  // 11-110 Set Asynchronous Balanced Mode Extended
 		// 11-111 Not used
-	};
+	};       
 
 	static inline void sendInformationControlField()
 	{
@@ -373,6 +373,22 @@ public:
 		sendSUPostamble();
 	}
 
+	static void sendSupervisoryFrame(supervisory_command c)
+	{
+		uint8_t v = 0x01;
+		v |= c<<2;
+		v |= (rxNextSeqNum<<5);
+
+		startPacket(0);
+		
+		Serial::write( frameFlag );
+		sendByte( (uint8_t)Config::stationId );
+		outcrc.update( (uint8_t)Config::stationId );
+		sendByte(v);
+		outcrc.update(v);
+		sendSUPostamble();
+	}
+
 	static void ackLastFrame()
 	{
 		uint8_t v = RR << 2;
@@ -426,11 +442,10 @@ public:
 
 			if (rxNextSeqNum != h->control.iframe.txseq) {
 				// Reject frame here ????
-                LOG("************* INVALID FRAME RECEIVED ***************\n");
-			} else {
-				rxNextSeqNum++;
-				rxNextSeqNum&=0x7;
+				sendSupervisoryFrame(REJ);
 
+				LOG("************* INVALID FRAME RECEIVED ***************\n");
+			} else {
 				// Check acks
 
 				LOG("His sequence 0x%02x, acks 0x%02x\n",
@@ -439,12 +454,18 @@ public:
 
 
 				if (linkFlags & LINK_FLAG_LINKUP) {
+					rxNextSeqNum++;
+					rxNextSeqNum&=0x7;
+
 					linkFlags &= ~LINK_FLAG_PACKETSENT;
+
 					Implementation::processPacket(pBuf+2,pBufPtr-4);
+
 					if (!(linkFlags & LINK_FLAG_PACKETSENT)) {
 						ackLastFrame();
 					}
 				} else {
+					sendSupervisoryFrame(REJ);
 					LOG("Link down, dropping frame\n");
 				}
 			}

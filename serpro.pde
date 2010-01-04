@@ -10,7 +10,6 @@ public:
 	};
 	static inline void flush(){
 	};
-
 };
 
 // 4 functions

@@ -220,7 +220,7 @@ public:
 		XID         = 0xAC, // 11-101 Exchange identification
 		SABME       = 0x6C  // 11-110 Set Asynchronous Balanced Mode Extended
 		// 11-111 Not used
-	};       
+	};
 
 	static inline void sendInformationControlField()
 	{
@@ -281,17 +281,7 @@ public:
 		outcrc.update(c);
 		sendByte(c);
 	}
-	/*
-	 static void sendPacket(command_t const command, unsigned char * const buf, packet_size_t const size)
-	 {
-	 startPacket(size);
-	 sendPreamble();
-	 outcrc.update( command );
-	 sendData(command);
-	 sendData(buf,size);
-	 sendPostamble();
-	 }
-	 */
+
 	static void sendCommandPacket(command_t const command, unsigned char * const buf, packet_size_t const size)
 	{
 		startPacket(size);
@@ -321,7 +311,6 @@ public:
 		default:
 			LOG("Unhandled supervisory frame\n");
 		}
-
 	}
 
 	static void handle_unnumbered()
@@ -380,7 +369,7 @@ public:
 		v |= (rxNextSeqNum<<5);
 
 		startPacket(0);
-		
+
 		Serial::write( frameFlag );
 		sendByte( (uint8_t)Config::stationId );
 		outcrc.update( (uint8_t)Config::stationId );

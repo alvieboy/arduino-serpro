@@ -30,7 +30,8 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 
 #include <inttypes.h>
 #include "crc16.h"
-
+#include "SerProCommon.h"
+#include "Packet.h"
 
 #ifndef AVR
 #include <stdio.h>
@@ -38,6 +39,11 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 #else
 #define LOG(m...)
 #endif
+
+
+static uint8_t const HDLC_frameFlag = 0x7E;
+static uint8_t const HDLC_escapeFlag = 0x7D;
+static uint8_t const HDLC_escapeXOR = 0x20;
 
 // These four templates help us to choose a good storage class for
 // the receiving buffer size, based on the maximum message size.
@@ -61,13 +67,125 @@ template<>
 		typedef uint16_t type;
 	};
 
+
+/* Packet definition  - not to be used on Arduino */
+
+template<class Config, class Serial>
+class HDLCPacket: public Packet
+{
+	CRC16_ccitt outcrc;
+	uint8_t outCommand;
+
+	void sendRAW(uint8_t b)
+	{
+		Serial::write(b);
+	}
+
+
+public:
+
+	void startPacket(uint8_t command, int payload_size) {
+		outcrc.reset();
+		outCommand=command;
+	}
+
+	void sendByte(uint8_t b)
+	{
+		if (b==HDLC_frameFlag || b==HDLC_escapeFlag) {
+			sendRAW(HDLC_escapeFlag);
+			sendRAW(b ^ HDLC_escapeXOR);
+		} else
+			sendRAW(b);
+	}
+
+	void sendData(uint8_t *buf, size_t size)
+	{
+		for(;size>0;size--,buf++) {
+			sendData(*buf);
+		}
+	}
+
+	void sendData(uint8_t b)
+	{
+		outcrc.update(b);
+		sendByte(b);
+	}
+
+	HDLCPacket() {
+		//payload = new byte[Config::maxPacketSize];
+		payload_size=0;
+	}
+
+	void append(uint8_t b) {
+		payload[payload_size++] = b;
+	}
+
+	void append(uint8_t *buf, size_t size)
+	{
+		for(;size>0;size--,buf++) {
+			append(*buf);
+		}
+	}
+
+	int getSize() {
+		return payload_size;
+	}
+
+	void send(int control) {
+		outcrc.reset();
+		sendPreamble(control);
+		if (payload_size>0)
+			sendData(payload,payload_size);
+		sendPostamble();
+	}
+
+
+	void sendPreamble(uint8_t control) {
+		sendRAW(HDLC_frameFlag);
+		sendByte(0xff); // Target
+		outcrc.update(0xff);
+		sendByte(control);
+		outcrc.update(control);
+	}
+
+	void sendPostamble() {
+		uint16_t crc = outcrc.get();
+		sendByte(crc & 0xff);
+		sendByte((crc>>8)&0xff);
+		sendRAW(HDLC_frameFlag);
+		Serial::flush();
+	}
+
+	void setSeq(int s){
+		seq=s;
+	}
+	int getSeq() {
+		return seq;
+	}
+
+	void append(uint16_t value) {
+		append(value&0xff);
+		append((value>>8)&0xff);
+	}
+
+	void append(uint32_t value) {
+		append((value &0xff));
+		append((value>>8 &0xff));
+		append((value>>16 &0xff));
+		append((value>>24 &0xff));
+	}
+
+
+	uint8_t payload[Config::maxPacketSize];
+	int payload_size;
+	int seq;
+};
+
+
+
 template<class Config,class Serial,class Implementation> class SerProHDLC
 {
 public:
-	static uint8_t const frameFlag = 0x7E;
-	static uint8_t const escapeFlag = 0x7D;
-	static uint8_t const escapeXOR = 0x20;
-
 	/* Buffer */
 	static unsigned char pBuf[Config::maxPacketSize];
 
@@ -79,6 +197,7 @@ public:
 	typedef uint8_t command_t;
 
 
+	static HDLCPacket<Config,Serial> p;
 	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
 	//typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
@@ -166,9 +285,9 @@ public:
 
 	static inline void sendByte(uint8_t byte)
 	{
-		if (byte==frameFlag || byte==escapeFlag || (forceEscapingLow&&byte<0x20)) {
-			Serial::write(escapeFlag);
-			Serial::write(byte ^ escapeXOR);
+		if (byte==HDLC_frameFlag || byte==HDLC_escapeFlag || (forceEscapingLow&&byte<0x20)) {
+			Serial::write(HDLC_escapeFlag);
+			Serial::write(byte ^ HDLC_escapeXOR);
 		} else
 			Serial::write(byte);
 	}
@@ -238,7 +357,7 @@ public:
 
 	static void sendPreamble()
 	{
-		Serial::write( frameFlag );
+		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::stationId );
 		outcrc.update( (uint8_t)Config::stationId );
 		sendInformationControlField();
@@ -249,7 +368,7 @@ public:
 		CRC16_ccitt::crc_t crc = outcrc.get();
 		sendByte(crc & 0xff);
 		sendByte(crc>>8);
-		Serial::write(frameFlag);
+		Serial::write(HDLC_frameFlag);
 		Serial::flush();
 
 		txSeqNum++;
@@ -262,7 +381,7 @@ public:
 		CRC16_ccitt::crc_t crc = outcrc.get();
 		sendByte(crc & 0xff);
 		sendByte(crc>>8);
-		Serial::write(frameFlag);
+		Serial::write(HDLC_frameFlag);
 		Serial::flush();
 	}
 
@@ -354,7 +473,7 @@ public:
 
 		startPacket(0);
 		LOG("V: %02x c=%02x\n",v,c);
-		Serial::write( frameFlag );
+		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::stationId );
 		outcrc.update( (uint8_t)Config::stationId );
 		sendByte(v);
@@ -370,7 +489,7 @@ public:
 
 		startPacket(0);
 
-		Serial::write( frameFlag );
+		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::stationId );
 		outcrc.update( (uint8_t)Config::stationId );
 		sendByte(v);
@@ -387,7 +506,7 @@ public:
 		LOG("Acknowledging last frame 0x%02x\n",v);
 
 		startPacket(0);
-		Serial::write( frameFlag );
+		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::stationId );
 		outcrc.update( (uint8_t)Config::stationId );
 		sendByte(v);
@@ -476,13 +595,13 @@ public:
 	static void processData(uint8_t bIn)
 	{
 		LOG("Process data: %d (0x%02x)\n",bIn,bIn);
-		if (bIn==escapeFlag) {
+		if (bIn==HDLC_escapeFlag) {
 			unEscaping=true;
 			return;
 		}
 
 		// Check unescape error ?
-		if (bIn==frameFlag && !unEscaping) {
+		if (bIn==HDLC_frameFlag && !unEscaping) {
 			if (inPacket) {
 				/* End of packet */
 				if (pBufPtr) {
@@ -497,7 +616,7 @@ public:
 			}
 		} else {
 			if (unEscaping) {
-				bIn^=escapeXOR;
+				bIn^=HDLC_escapeXOR;
 				unEscaping=false;
 			}
 

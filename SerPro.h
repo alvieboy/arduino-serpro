@@ -23,7 +23,8 @@
 
 #include <stdint.h>
 #include <string.h> // For strlen
-
+#include "Packet.h"
+#include "SerProCommon.h"
 
 // Since GCC 4.3 we cannot have storage class qualifiers on template
 // specializations. However, prior versions require them. I know, it's
@@ -72,10 +73,10 @@ MAYBESTATIC void serialize(const char *string) {
  TODO: document
  */
 template<class Config, class Serial,
-template <class Config, class Ser,class Implementation> class Protocol >
+template <class Config, class Ser,class Implementation, class Timer> class Protocol,class Timer=NoTimer >
 struct protocolImplementation
 {
-	typedef Protocol<Config,Serial,protocolImplementation> MyProtocol;
+	typedef Protocol<Config,Serial,protocolImplementation,Timer> MyProtocol;
 	/* Forwarded types */
 	typedef typename MyProtocol::command_t command_t;
 	typedef typename MyProtocol::buffer_size_t buffer_size_t;
@@ -101,6 +102,9 @@ struct protocolImplementation
 		}
 	};
 
+	static void connect() {
+		MyProtocol::startLink();
+	}
 	static inline void deferReply()
 	{
 		MyProtocol::deferReply();
@@ -117,6 +121,29 @@ struct protocolImplementation
 		callbacks[index].deserialize(data,pos,callbacks[index].func);
 #endif
 	}
+
+	/* Only for Master */
+	void sendPacket(uint8_t command, uint8_t *payload, size_t payload_size) {
+
+		Packet p = MyProtocol::createPacket();
+		p.append(command);
+		p.append(payload,payload_size);
+
+		MyProtocol::queueTransmit(p);
+	}
+
+	void sendPacket(uint8_t command) {
+		sendPacket(command,NULL,0);
+	}
+
+	void sendPacket(uint8_t command, uint8_t value) {
+		Packet p = MyProtocol::createPacket();
+		p.append(command);
+		p.append(value);
+
+		MyProtocol::queueTransmit(p);
+	}
+
 
 	static inline void processPacket(const unsigned char *buf,
 									 buffer_size_t size)
@@ -428,6 +455,15 @@ struct functionHandler {
 
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
+	template<> \
+	struct deserializer<name, void (const name::RawBuffer &)> { \
+	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
+	func( name::MyProtocol::getRawBuffer() ); \
+	} \
+	};\
+
+#define DECLARE_SERPRO_WITH_TIMER(config,serial,proto,timer,name) \
+	typedef protocolImplementation<config,serial,proto,timer> name; \
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \

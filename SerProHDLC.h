@@ -164,8 +164,8 @@ public:
 	}
 
 	void append(uint16_t value) {
-		append(value&0xff);
-		append((value>>8)&0xff);
+		append((uint8_t)(value&0xff));
+		append((uint8_t)((value>>8)&0xff));
 	}
 
 	void append(uint32_t value) {
@@ -182,8 +182,42 @@ public:
 };
 
 
+class PacketQueue
+{
+public:
 
-template<class Config,class Serial,class Implementation> class SerProHDLC
+	PacketQueue() {
+		low=7;
+		high=0;
+		int i;
+		for (i=0;i<7;i++)
+			slots[i]=NULL;
+	};
+
+	Packet *getByID(uint8_t) const;
+	int queue(Packet *p);
+	Packet *dequeue();
+private:
+	Packet *slots[7];
+	uint8_t low,high;
+};
+
+typedef enum {
+	LINK_UP,
+	LINK_DOWN,
+	CRC_ERROR,
+	EMPTY_FRAME,
+	START_XMIT,
+	END_XMIT,
+	START_FRAME,
+	END_FRAME
+} event_type;
+
+template<event_type t>
+static inline void handleEvent() {
+}
+
+template<class Config,class Serial,class Implementation,class Timer> class SerProHDLC
 {
 public:
 	/* Buffer */
@@ -196,8 +230,9 @@ public:
 
 	typedef uint8_t command_t;
 
+	typedef HDLCPacket<Config,Serial> MyPacket;
+	static PacketQueue txQueue, rxQueue;
 
-	static HDLCPacket<Config,Serial> p;
 	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
 	//typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
@@ -341,6 +376,25 @@ public:
 		// 11-111 Not used
 	};
 
+	typedef typename Timer::timer_t timer_t;
+	static timer_t linktimer;
+
+	static int linkExpired(void*d)
+	{
+		LOG("Link timeout, retrying\n");
+		startLink();
+		return 0;
+	}
+
+	static void startLink()
+	{
+		if (Timer::defined(linktimer)) {
+			linktimer = Timer::cancelTimer(linktimer);
+		}
+		linktimer = Timer::addTimer( &linkExpired, 1000);
+		sendUnnumberedFrame( SNRM );
+	}
+
 	static inline void sendInformationControlField()
 	{
 		uint8_t ifield;
@@ -352,7 +406,17 @@ public:
 	static void startPacket(packet_size_t len)
 	{
 		outcrc.reset();
+		handleEvent<START_XMIT>();
 		pBufPtr=0;
+	}
+
+	static int queueTransmit(Packet *p)
+	{
+		if (Config::implementationType==Master) {
+			txQueue.queue( p );
+			return 1;
+		}
+		return 0;
 	}
 
 	static void sendPreamble()
@@ -370,7 +434,7 @@ public:
 		sendByte(crc>>8);
 		Serial::write(HDLC_frameFlag);
 		Serial::flush();
-
+		handleEvent<END_XMIT>();
 		txSeqNum++;
 		txSeqNum&=0x7; // Cap at 3-bits only.
 
@@ -383,6 +447,7 @@ public:
 		sendByte(crc>>8);
 		Serial::write(HDLC_frameFlag);
 		Serial::flush();
+		handleEvent<END_XMIT>();
 	}
 
 	static void sendData(const unsigned char * const buf, packet_size_t size)
@@ -416,6 +481,10 @@ public:
 		linkFlags |= LINK_FLAG_PACKETSENT;
 	}
 
+	static Packet *createPacket()
+	{
+        return new MyPacket();
+	}
 
 	static void handle_supervisory()
 	{
@@ -432,6 +501,17 @@ public:
 		}
 	}
 
+	static void setLinkUP()
+	{
+		linkFlags |= LINK_FLAG_LINKUP;
+		handleEvent<LINK_UP>();
+	}
+	static void setLinkDOWN()
+	{
+		linkFlags &= ~LINK_FLAG_LINKUP;
+		handleEvent<LINK_DOWN>();
+	}
+
 	static void handle_unnumbered()
 	{
 		HDLC_header *h = (HDLC_header*)pBuf;
@@ -440,27 +520,31 @@ public:
 		switch(c) {
 		case SNRM:
 			sendUnnumberedFrame(UA);
-			linkFlags |= LINK_FLAG_LINKUP;
+			setLinkUP();
 			// Reset tx/rx sequences
 			txSeqNum=0;
 			rxNextSeqNum=0;
 			LOG("Link up, NRM\n");
 			break;
 		case DM:
-			linkFlags &= ~LINK_FLAG_LINKUP;
+			setLinkDOWN();
 			LOG("Link down\n");
 			break;
 		case UA:
-			linkFlags |= LINK_FLAG_LINKUP;
+			setLinkUP();
 			// Reset tx/rx sequences
 			txSeqNum=0;
 			rxNextSeqNum=0;
 			LOG("Link up, by our request\n");
+			if (Config::implementationType==Master) {
+				if (Timer::defined(linktimer))
+					linktimer = Timer::cancelTimer(linktimer);
+			}
 			break;
 
 		default:
 			sendUnnumberedFrame(DM);
-			linkFlags &= ~LINK_FLAG_LINKUP;
+			setLinkDOWN();
 			LOG("Link down\n");
 			break;
 		}
@@ -536,6 +620,7 @@ public:
 		if (pcrc!=incrc.get()) {
 			/* CRC error */
 			LOG("CRC ERROR, expected 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
+			handleEvent<CRC_ERROR>();
 			return;
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
@@ -605,6 +690,7 @@ public:
 			if (inPacket) {
 				/* End of packet */
 				if (pBufPtr) {
+					handleEvent<END_FRAME>();
 					preProcessPacket();
 					inPacket = false;
 				}
@@ -612,6 +698,7 @@ public:
 				/* Beginning of packet */
 				pBufPtr = 0;
 				inPacket = true;
+				handleEvent<START_FRAME>();
 				incrc.reset();
 			}
 		} else {
@@ -641,6 +728,7 @@ public:
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
 	template<> bool SerPro::MyProtocol::forceEscapingLow = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
-	template<> unsigned char SerPro::MyProtocol::pBuf[]={0};
+	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
+	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t();
 
 #endif

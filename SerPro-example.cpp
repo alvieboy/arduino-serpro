@@ -12,6 +12,10 @@ public:
 	static void flush();
 };
 
+class Timer
+{
+}
+
 struct SerProConfig {
 	static unsigned int const maxFunctions = 4;
 	static unsigned int const maxPacketSize = 32;

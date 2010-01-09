@@ -30,6 +30,7 @@ public:
 	virtual void append(uint16_t b) = 0;
 	virtual void append(uint32_t b) = 0;
 	virtual void append(uint8_t *buf, size_t size) = 0;
+	virtual ~Packet() {}
 };
 
 #endif

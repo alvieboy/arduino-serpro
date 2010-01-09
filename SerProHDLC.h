@@ -187,19 +187,48 @@ class PacketQueue
 public:
 
 	PacketQueue() {
-		low=7;
-		high=0;
+		ack=0;
+		tx=0;
 		int i;
 		for (i=0;i<7;i++)
 			slots[i]=NULL;
 	};
 
+	uint8_t toBeAcked() {
+		return (tx - ack) & 0x7;
+	}
+
 	Packet *getByID(uint8_t) const;
-	int queue(Packet *p);
-	Packet *dequeue();
+
+	uint8_t queue(Packet *p) {
+		if (((tx+1)&7)==ack)
+			return -1;
+		slots[tx++] = p;
+		LOG("Queuing TX packet at %d\n",tx);
+		return 0;
+	}
+	Packet *dequeue() {
+		if (toBeAcked()>0) {
+			Packet *r = slots[ack++];
+			ack &= 0x7;
+			return r;
+		} else {
+			return NULL;
+		}
+	}
+
+	Packet *peek()
+	{
+		if (toBeAcked()>0) {
+			Packet *r = slots[(tx-1)&0xff];
+			return r;
+		} else {
+			return NULL;
+		}
+	}
 private:
 	Packet *slots[7];
-	uint8_t low,high;
+	uint8_t tx,ack;
 };
 
 typedef enum {
@@ -729,6 +758,8 @@ public:
 	template<> bool SerPro::MyProtocol::forceEscapingLow = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
-	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t();
+	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
+	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
+    template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue();
 
 #endif

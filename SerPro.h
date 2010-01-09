@@ -123,23 +123,23 @@ struct protocolImplementation
 	}
 
 	/* Only for Master */
-	void sendPacket(uint8_t command, uint8_t *payload, size_t payload_size) {
+	static void sendPacket(uint8_t command, uint8_t *payload, size_t payload_size) {
 
-		Packet p = MyProtocol::createPacket();
-		p.append(command);
-		p.append(payload,payload_size);
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(payload,payload_size);
 
 		MyProtocol::queueTransmit(p);
 	}
 
-	void sendPacket(uint8_t command) {
+	static void sendPacket(uint8_t command) {
 		sendPacket(command,NULL,0);
 	}
 
-	void sendPacket(uint8_t command, uint8_t value) {
-		Packet p = MyProtocol::createPacket();
-		p.append(command);
-		p.append(value);
+	static void sendPacket(uint8_t command, uint8_t value) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value);
 
 		MyProtocol::queueTransmit(p);
 	}

@@ -32,6 +32,19 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 #include "crc16.h"
 #include "SerProCommon.h"
 #include "Packet.h"
+#ifndef AVR
+#include <queue>
+#else
+namespace std {
+	template<class T> class queue {
+	public:
+		size_t size() const;
+		void pop();
+		void push(const T&);
+		T &front() const;
+	};
+};
+#endif
 
 #ifndef AVR
 #include <stdio.h>
@@ -131,7 +144,7 @@ public:
 		return payload_size;
 	}
 
-	void send(int control) {
+	void send(uint8_t control) {
 		outcrc.reset();
 		sendPreamble(control);
 		if (payload_size>0)
@@ -195,6 +208,7 @@ public:
 	};
 
 	uint8_t toBeAcked() {
+		LOG("Packets to be acked: %d\n",(tx-ack)&0x7);
 		return (tx - ack) & 0x7;
 	}
 
@@ -216,16 +230,36 @@ public:
 			return NULL;
 		}
 	}
-
+	uint8_t peekIndex() {
+		return (tx-1)&0x7;
+	}
 	Packet *peek()
 	{
 		if (toBeAcked()>0) {
-			Packet *r = slots[(tx-1)&0xff];
+			Packet *r = slots[(tx-1)&0x7];
 			return r;
 		} else {
 			return NULL;
 		}
 	}
+	void ackUpTo(uint8_t num)
+	{
+		LOG("ACK'ing up to sequance %u\n",num);
+		uint8_t i = ack;
+		while (i!=num) {
+			if (slots[i]) {
+				/* Remove */
+				LOG("Acking %u\n",i);
+				delete(slots[i]);
+				slots[i]=NULL;
+			} else {
+				LOG("Ack'ing non ackable frame %u\n",i);
+			}
+			ack=num;
+			i++;
+		}
+	}
+
 private:
 	Packet *slots[7];
 	uint8_t tx,ack;
@@ -261,6 +295,7 @@ public:
 
 	typedef HDLCPacket<Config,Serial> MyPacket;
 	static PacketQueue txQueue, rxQueue;
+	static std::queue<Packet*> inputQueue;
 
 	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
 	//typedef uint16_t buffer_size_t;
@@ -439,10 +474,40 @@ public:
 		pBufPtr=0;
 	}
 
+	static void startXmit()
+	{
+		HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
+		// Compute control field.
+		uint8_t control;
+		control = (txQueue.peekIndex())<<1;
+		control |= 0x10; // Poll
+		control |= (rxNextSeqNum<<5);
+		p->send(control);
+	}
+
+	static void checkXmit()
+	{
+		if (Config::implementationType==Master) {
+			LOG("Checking Xmit queue...\n");
+			if (txQueue.toBeAcked()==0 && inputQueue.size()>0) {
+				Packet *p = inputQueue.front();
+				inputQueue.pop();
+				LOG("Queuing packet\n");
+				queueTransmit(p);
+			}
+		}
+	}
+
 	static int queueTransmit(Packet *p)
 	{
 		if (Config::implementationType==Master) {
-			txQueue.queue( p );
+
+			if (txQueue.toBeAcked()==0) {
+				txQueue.queue( p );
+				startXmit();
+			} else {
+				inputQueue.push(p);
+			}
 			return 1;
 		}
 		return 0;
@@ -512,7 +577,7 @@ public:
 
 	static Packet *createPacket()
 	{
-        return new MyPacket();
+		return new MyPacket();
 	}
 
 	static void handle_supervisory()
@@ -525,6 +590,11 @@ public:
 		case RR:
 			LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
 			break;
+		case REJ:
+			if (Config::implementationType==Master) {
+				LOG("Got REJ for sequence %u\n",h->control.sframe.seq);
+				break;
+			}
 		default:
 			LOG("Unhandled supervisory frame\n");
 		}
@@ -534,6 +604,7 @@ public:
 	{
 		linkFlags |= LINK_FLAG_LINKUP;
 		handleEvent<LINK_UP>();
+		checkXmit();
 	}
 	static void setLinkDOWN()
 	{
@@ -612,19 +683,30 @@ public:
 
 	static void ackLastFrame()
 	{
-		uint8_t v = RR << 2;
-		v|= 0x01;
-		v|= (rxNextSeqNum & 0x7)<<5;
+		if (Config::implementationType == Slave) {
+			uint8_t v = RR << 2;
+			v|= 0x01;
+			v|= (rxNextSeqNum & 0x7)<<5;
 
-		LOG("Acknowledging last frame 0x%02x\n",v);
+			LOG("Acknowledging last frame 0x%02x\n",v);
 
-		startPacket(0);
-		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::stationId );
-		outcrc.update( (uint8_t)Config::stationId );
-		sendByte(v);
-		outcrc.update(v);
-		sendSUPostamble();
+			startPacket(0);
+			Serial::write( HDLC_frameFlag );
+			sendByte( (uint8_t)Config::stationId );
+			outcrc.update( (uint8_t)Config::stationId );
+			sendByte(v);
+			outcrc.update(v);
+			sendSUPostamble();
+		}
+	}
+
+	static void handleInformationFrame(const HDLC_header *h)
+	{
+		if (Config::implementationType==Master) {
+			/* Ack frames */
+
+			txQueue.ackUpTo(h->control.iframe.rxseq);
+		}
 	}
 
 	static void preProcessPacket()
@@ -680,6 +762,8 @@ public:
 					rxNextSeqNum&=0x7;
 
 					linkFlags &= ~LINK_FLAG_PACKETSENT;
+
+					handleInformationFrame(h);
 
 					Implementation::processPacket(pBuf+2,pBufPtr-4);
 
@@ -760,6 +844,7 @@ public:
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
 	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
-    template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue();
+	template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue(); \
+	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();
 
 #endif

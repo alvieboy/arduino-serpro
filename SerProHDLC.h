@@ -125,15 +125,15 @@ public:
 	}
 
 	HDLCPacket() {
-		//payload = new byte[Config::maxPacketSize];
 		payload_size=0;
 	}
 
-	void append(uint8_t b) {
+	void append(const uint8_t &b) {
+		LOG("Packet add: %02x\n",b);
 		payload[payload_size++] = b;
 	}
 
-	void appendBuffer(uint8_t *buf, size_t size)
+	void appendBuffer(const uint8_t *buf, size_t size)
 	{
 		for(;size>0;size--,buf++) {
 			append(*buf);
@@ -176,12 +176,12 @@ public:
 		return seq;
 	}
 
-	void append(uint16_t value) {
+	void append(const uint16_t &value) {
 		append((uint8_t)(value&0xff));
 		append((uint8_t)((value>>8)&0xff));
 	}
 
-	void append(uint32_t value) {
+	void append(const uint32_t &value) {
 		append((value &0xff));
 		append((value>>8 &0xff));
 		append((value>>16 &0xff));
@@ -217,10 +217,16 @@ public:
 	uint8_t queue(Packet *p) {
 		if (((tx+1)&7)==ack)
 			return -1;
-		slots[tx++] = p;
-		LOG("Queuing TX packet at %d\n",tx);
+
+		LOG("Queuing TX packet %p at %d\n",p,tx);
+		slots[tx] = p;
+		tx++;
+		LOG("TXa %u\n",tx);
+		tx = tx & 0x7;
+		LOG("Next TX pos: %u\n",tx);
 		return 0;
 	}
+
 	Packet *dequeue() {
 		if (toBeAcked()>0) {
 			Packet *r = slots[ack++];
@@ -235,8 +241,10 @@ public:
 	}
 	Packet *peek()
 	{
+		LOG("PEEK: ack %u, tx %u\n",ack,tx);
 		if (toBeAcked()>0) {
 			Packet *r = slots[(tx-1)&0x7];
+			LOG("PEEK packet: %p (index %u)",r,(tx-1)&0x7);
 			return r;
 		} else {
 			return NULL;
@@ -257,11 +265,13 @@ public:
 			}
 			ack=num;
 			i++;
+			i&=7;
 		}
+		LOG("ACK counter now %u\n",ack);
 	}
 
 private:
-	Packet *slots[7];
+	Packet *slots[8];
 	uint8_t tx,ack;
 };
 
@@ -492,7 +502,7 @@ public:
 			if (txQueue.toBeAcked()==0 && inputQueue.size()>0) {
 				Packet *p = inputQueue.front();
 				inputQueue.pop();
-				LOG("Queuing packet\n");
+				LOG("Queuing packet %p\n",p);
 				queueTransmit(p);
 			}
 		}
@@ -589,6 +599,10 @@ public:
 		switch (c) {
 		case RR:
 			LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
+			if (Config::implementationType==Master) {
+				txQueue.ackUpTo(h->control.sframe.seq);
+				checkXmit();
+			}
 			break;
 		case REJ:
 			if (Config::implementationType==Master) {
@@ -704,8 +718,8 @@ public:
 	{
 		if (Config::implementationType==Master) {
 			/* Ack frames */
-
 			txQueue.ackUpTo(h->control.iframe.rxseq);
+			checkXmit();
 		}
 	}
 

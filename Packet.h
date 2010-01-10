@@ -26,9 +26,13 @@
 class Packet
 {
 public:
-	virtual void append(uint8_t b) = 0;
-	virtual void append(uint16_t b) = 0;
-	virtual void append(uint32_t b) = 0;
+
+	virtual void append(const uint8_t &b) = 0;
+	virtual void append(const uint16_t &b) = 0;
+	virtual void append(const uint32_t &b) = 0;
+
+	virtual void appendBuffer(const uint8_t *buf, size_t size) = 0;
+	
 	template<typename A,typename B>
 	void append(const A &a, const B &b) {
 		append(a);
@@ -64,7 +68,7 @@ public:
 		append(e);
 		append(f);
 	}
-	virtual void appendBuffer(uint8_t *buf, size_t size) = 0;
+
 	virtual ~Packet() {}
 };
 

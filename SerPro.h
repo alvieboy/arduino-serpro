@@ -151,7 +151,15 @@ struct protocolImplementation
 	static void sendPacket(uint8_t command, const A&value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append<A>(value);
+		p->append(value);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class STRUCT>
+	static void sendPacket(uint8_t command, const STRUCT *value) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->appendBuffer((uint8_t*)value,sizeof(STRUCT));
 		MyProtocol::queueTransmit(p);
 	}
 
@@ -159,7 +167,7 @@ struct protocolImplementation
 	static void sendPacket(uint8_t command, const A &value_a, const B &value_b) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append<A,B>(value_a,value_b);
+		p->append(value_a,value_b);
 		MyProtocol::queueTransmit(p);
 	}
 
@@ -168,7 +176,7 @@ struct protocolImplementation
 						   const C&value_c) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append<A,B,C>(value_a,value_b,value_c);
+		p->append(value_a,value_b,value_c);
 		MyProtocol::queueTransmit(p);
 	}
 
@@ -177,7 +185,7 @@ struct protocolImplementation
 						   const C&value_c, const D &value_d) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append<A,B,C,D>(value_a,value_b,value_c,value_d);
+		p->append(value_a,value_b,value_c,value_d);
 		MyProtocol::queueTransmit(p);
 	}
 
@@ -186,7 +194,7 @@ struct protocolImplementation
 						   const C&value_c, const D &value_d, const E &value_e) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append<A,B,C,D>(value_a,value_b,value_c,value_d);
+		p->append(value_a,value_b,value_c,value_d);
 		MyProtocol::queueTransmit(p);
 	}
 

@@ -127,20 +127,66 @@ struct protocolImplementation
 
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
-		p->append(payload,payload_size);
+		p->appendBuffer(payload,payload_size);
 
 		MyProtocol::queueTransmit(p);
 	}
 
 	static void sendPacket(uint8_t command) {
-		sendPacket(command,NULL,0);
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		MyProtocol::queueTransmit(p);
 	}
+	/*
 
 	static void sendPacket(uint8_t command, uint8_t value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->append(value);
+		MyProtocol::queueTransmit(p);
+		}
+        */
 
+	template <class A>
+	static void sendPacket(uint8_t command, const A&value) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append<A>(value);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B>
+	static void sendPacket(uint8_t command, const A &value_a, const B &value_b) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append<A,B>(value_a,value_b);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C>
+	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+						   const C&value_c) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append<A,B,C>(value_a,value_b,value_c);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C,class D>
+	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+						   const C&value_c, const D &value_d) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append<A,B,C,D>(value_a,value_b,value_c,value_d);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C,class D,class E>
+	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+						   const C&value_c, const D &value_d, const E &value_e) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append<A,B,C,D>(value_a,value_b,value_c,value_d);
 		MyProtocol::queueTransmit(p);
 	}
 

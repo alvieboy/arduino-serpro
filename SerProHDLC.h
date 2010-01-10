@@ -133,7 +133,7 @@ public:
 		payload[payload_size++] = b;
 	}
 
-	void append(uint8_t *buf, size_t size)
+	void appendBuffer(uint8_t *buf, size_t size)
 	{
 		for(;size>0;size--,buf++) {
 			append(*buf);

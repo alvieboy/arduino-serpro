@@ -29,7 +29,42 @@ public:
 	virtual void append(uint8_t b) = 0;
 	virtual void append(uint16_t b) = 0;
 	virtual void append(uint32_t b) = 0;
-	virtual void append(uint8_t *buf, size_t size) = 0;
+	template<typename A,typename B>
+	void append(const A &a, const B &b) {
+		append(a);
+		append(b);
+	}
+	template<typename A,typename B,typename C>
+	void append(const A &a, const B &b, const C &c) {
+		append(a);
+		append(b);
+		append(c);
+	}
+	template<typename A,typename B,typename C,typename D>
+	void append(const A &a, const B &b, const C &c, const D &d) {
+		append(a);
+		append(b);
+		append(c);
+		append(d);
+	}
+	template<typename A,typename B,typename C,typename D,typename E>
+	void append(const A &a, const B &b, const C &c, const D &d, const E &e) {
+		append(a);
+		append(b);
+		append(c);
+		append(d);
+		append(e);
+	}
+	template<typename A,typename B,typename C,typename D,typename E,typename F>
+	void append(const A &a, const B &b, const C &c, const D &d, const E &e, const F &f) {
+		append(a);
+		append(b);
+		append(c);
+		append(d);
+		append(e);
+		append(f);
+	}
+	virtual void appendBuffer(uint8_t *buf, size_t size) = 0;
 	virtual ~Packet() {}
 };
 

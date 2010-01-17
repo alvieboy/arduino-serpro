@@ -29,6 +29,13 @@
 		pre { background: #000; color: #fff; padding: 15px;}
     hr { border: 0; width: 80%; border-bottom: 1px solid #aaa}
     .footer { text-align:center; padding-top:30px; font-style: italic; }
+    div.code { 
+    	display: block;
+    	font-family: "Fixed", "Courier", "Courier New";
+        border: 1px dashed black;
+        padding: 1em;
+        white-space: pre;
+    }
 	</style>
 	
 </head>
@@ -52,8 +59,33 @@
       Serial Protocol (packet/frame based) library for Arduino intercommunication
     </div>
 
-    <p>Describe project here</p><h2>Dependencies</h2>
-<p>Dependencies here</p>
+    <p>SerPro (which is an abreviation of Serial Protocol) aims to be a simple, easy to use, and
+    yet powerful library for interconnecting Arduino (or any other microcontroller) to another device,
+    such as a Personal Computer.</p>
+    <p>The most interesting features of SerPro are:</p>
+    <dl>
+     <dt>RPC-based approach</dt>
+     <dd>SerPro works by defining methods and respective arguments, and binding them to the transport protocol. 
+     RPC responses are also methods, but work on the opposite direction</dd>
+     <dt>Auto-serialization and deserialization of arguments to RPC methods</dt>
+     <dd>Serialization is done using type inspection. Deserialization only requires declaring the method handler (C++-like)</dd>
+     <dt>Low overhead</dt>
+     <dd>The serializators and deserializators are reused by each invocation</dd>
+     <dd>The RPC dispatch table is computed at compile time, not run-time, so can be placed in ROM, to save memory</dd>
+    </dl>
+    <p>SerPro can be divided into three distinct parts:</p>
+    <dl>
+     <dt>The RPC-like protocol</dt>
+     <dd>The RPC-like protocol implements up to 256 methods and responses, and automatic serialization and deserialization</dd>
+     <dt>The Transport protocol</dt>
+     <dd>The Transport protocol is responsable for getting RPC data (or other data) from one endpoint (like Arduino) to 
+     other endpoint (PC). The most stable protocol is SerPro-HDLC, however other protocols might be used.</dd>
+     <dt>The wrappers</dt>
+     <dd>SerPro uses a few wrappers so you can use the codebase (C++) in either Arduino or any PC-C++ application</dd>
+    </dl>
+    
+    <h2>Dependencies</h2>
+<p>No dependencies, but a reasonable C++ compiler. GCC/G++ (4.3) is advisable.</p>
 <h2>Install</h2>
 <p>Installation instructions here</p>
 <h2>License</h2>
@@ -80,7 +112,181 @@
     </div>
     
   </div>
+  
+  <div id="container">
+  <h2>Examples</h2>
+  <p>In order to use SerPro, you'll need to first evaluate the requirements of your application. These might change 
+  according to the protocol used.</p>
+  <p>The most common scenario for SerPro implementation is:</p>
+  <dl>
+  <dt>Wrapper definition</dt>
+  <dd>Currently at least a serial driver wrapper is needed, so SerPro knows how to transmit data through your serial port.</dd>
+  </dl>
+  <h3>Serial Wrapper</h3>
+  <p>The Serial Wrapper is a C++ class that implements three methods. Here's and example of a Serial Wrapper class for Arduino:</p>
+  <div class="code">
+struct SerialWrapper
+{
+public:
+	static inline void write(uint8_t v) {
+		Serial.write(v);
+	}
+	static inline void write(const uint8_t *buf,int size) {
+		Serial.write(buf,size);
+	}
+	static inline void flush() {
+	}
+};
 
+  </div>
+  <h3>The SerPro configuration</h3>
+  <p>A separate class is used for SerPro configuration.</p>
+  <div class="code">
+struct SerProConfig {
+	static unsigned int const maxFunctions = 16;
+	static unsigned int const maxPacketSize = 16;
+};
+  </div>
+<p>The most important values here are:</p>
+<dl>
+<dt>maxFunctions</dt>
+<dd>The maximum number of RPC functions handled by this implementation. To ensure minimum space usage, RPC calls should
+be numbered from 0 to 1 less this value</dd>
+<dt>maxPacketSize</dt>
+<dd>The maximum packet size allowed for reception. Make sure you compute this value prior. The transmission max. packet 
+size is not defined here, and depending on protocol used might be unlimited or not.</dd>
+
+<h2>The SerPro declaration</h2>
+<p>Since SerPro declaration is complex, there's a nice macro you can use:</p>
+<div class="code">
+DECLARE_SERPRO(SerProConfig,SerialWrapper,SerProHDLC,SerPro);
+</div>
+<p>The macro arguments are, in order: Configuration class, Serial Wrapper class, transport protocol class, and instance name.
+The delaration must be done after the wrappers definitions, and the configuration class.
+  </p>
+  
+  <h2>Declaring functions</h2>
+  <div class="code">DECLARE_FUNCTION(0)(void) {
+  	doSomething();
+  }
+  </div>
+  
+  <h2>Sending data</h2>
+  <p>In order to send data back (return value) from the RPC, use a simple approach:</p>
+  
+  <div class="code">#define MYFUNCTION 1
+#define MYFUNCTIONREPLY 1
+
+DECLARE_FUNCTION(MYFUNCTION)(uint8_t value) {
+  	uint8_t returnvalue = value + 1;
+  	SerPro::send(MYFUNCTIONREPLY, returnvalue); // serialized as uint8_t
+}
+END_FUNCTION
+  </div>
+  <p>Serializing and deserializing structures:</p>
+  <div class="code">struct mystructure {
+  	uint8_t a;
+        uint8_t b;
+        uint16_t c;
+  } SERPRO_STRUCTURE;
+
+#define MYFUNCTION 1
+#define MYFUNCTIONREPLY 1
+  
+DECLARE_FUNCTION(MYFUNCTION)(const struct mystructure *values) {
+  	struct mystructure ret;
+        ret.a = values->a+1;
+        ret.b = values->b-1;
+        ret.c = values->c / 2;
+  	SerPro::send(MYFUNCTIONREPLY, ret); // ret is automatically serialized
+}
+END_FUNCTION
+  </div>
+
+  <p>Obtaining the raw packet data:</p>
+  <div class="code">DECLARE_FUNCTION(MYFUNCTION)(const SerPro::RawBuffer &buffer) {
+	processBuffer(buffer.data, buffer.size);
+}
+END_FUNCTION
+</div>
+<h2>Implementing SerPro</h2>
+<p>After everyhing is OK, you need to implement SerPro like this:</p>
+<div class="code">IMPLEMENT_SERPRO(16,SerPro,SerProHDLC);</div>
+<p>The arguments for macro, are, in order: number of functions (<b>do not use a macro for this, nor a variable</b>), implementation name, 
+and protocol name. These parameters <b>must</b> match the SerPro declaration.</p>
+  
+  <h2>A full Arduino example: a 32-bit calculator</h2>
+  <div class="code">#include &lt;inttypes.h&gt;
+#include &lt;avr/io.h&gt;
+#include "SerPro.h"
+#include "SerProHDLC.h"
+
+/* Baud rate, for communication with PC */
+#define BAUD_RATE 115200
+
+#define FUNC_DIVIDE     0
+#define FUNC_MULTIPLY  	1
+#define FUNC_ADD  	2
+#define FUNC_SUB  	3
+
+struct SerialWrapper
+{
+public:
+	static inline void write(uint8_t v) { Serial.write(v);	}
+	static inline void write(const uint8_t *buf,int size) { Serial.write(buf,size); }
+	static void flush() {}
+};
+
+struct SerProConfig {
+	static unsigned int const maxFunctions = 4;
+	static unsigned int const maxPacketSize = 16;
+	static unsigned int const stationId = 3;
+	static SerProImplementationType const implementationType = Slave;
+};
+
+DECLARE_SERPRO(SerProConfig,SerialWrapper,SerProHDLC,SerPro);
+
+void setup() {
+	Serial.begin(BAUD_RATE);
+}
+
+void loop() {
+	if (Serial.available()>0) {
+		SerPro::processData(Serial.read() & 0xff);
+	}
+}
+
+DECLARE_FUNCTION(FUNC_DIVIDE)(uint32_t a, uint32_t b) {
+	SerPro::send(FUNC_DIVIDE,a/b);
+}
+END_FUNCTION
+
+DECLARE_FUNCTION(FUNC_MULTIPLY)(uint32_t a, uint32_t b) {
+	SerPro::send(FUNC_MULTIPLY,a*b);
+}
+END_FUNCTION
+
+DECLARE_FUNCTION(FUNC_ADD)(uint32_t a, uint32_t b) {
+	SerPro::send(FUNC_ADD,a+b);
+}
+END_FUNCTION
+
+DECLARE_FUNCTION(FUNC_SUB)(uint32_t a, uint32_t b) {
+	SerPro::send(FUNC_ADD,a-b);
+}
+END_FUNCTION
+
+IMPLEMENT_SERPRO(4,SerPro,SerProHDLC);</div>
+
+  <div id="container">
+  <h2>Internals</h2>
+  </div>
+
+  <div id="container">
+  <h2>FAQ</h2>
+  </div>
+  
+</div>
   <script type="text/javascript">
 var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
 document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));

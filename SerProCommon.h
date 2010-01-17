@@ -30,8 +30,8 @@ class NoTimer
 {
 public:
 	typedef int timer_t;
-	static timer_t addTimer( void (*cb)(void*), int milisseconds, void *data=0);
-	static timer_t cancelTimer(const timer_t &t);
+	static inline timer_t addTimer( void (*cb)(void*), int milisseconds, void *data=0);
+	static inline timer_t cancelTimer(const timer_t &t);
 	static inline bool defined(const timer_t &t);
 };
 

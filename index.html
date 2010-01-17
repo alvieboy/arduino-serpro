@@ -217,7 +217,6 @@ and protocol name. These parameters <b>must</b> match the SerPro declaration.</p
   
   <h2>A full Arduino example: a 32-bit calculator</h2>
   <div class="code">#include &lt;inttypes.h&gt;
-#include &lt;avr/io.h&gt;
 #include "SerPro.h"
 #include "SerProHDLC.h"
 
@@ -279,6 +278,69 @@ END_FUNCTION
 IMPLEMENT_SERPRO(4,SerPro,SerProHDLC);</div>
 
   <div id="container">
+  <h2>SerPro files</h2>
+<p>Current SerPro version is comprised of the following files:</p>
+<dl>
+<dt>SerPro.h</dt>
+<dd>The main class definition. Defines RPC infrastructure, macros, serialization and deserialization.</dd>
+<dt>SerProHDLC.h</dt>
+<dd>HDLC protocol implementation for SerPro.</dd>
+<dt>SerProPacket.h</dt>
+<dd>Packet protocol implementation for SerPro.</dd>
+<dt>SerProCommon.h</dt>
+<dd>Common classes used by all SerPro components.</dd>
+<dt>Packet.h</dt>
+<dd>SerPro Packet-like class (for master operation).</dd>
+<dt>preprocessor_table.h</dt>
+<dd>Preprocessor expand table, required by SerPro (a perl script, <i>gentable.pl</i>, is also provided, which can generate this file).</dd>
+  </div>
+
+  <div id="container">
+  <h2>SerPro in master (PC) mode</h2>
+	
+  <h3>Configuration</h3>
+  <h3>Timers</h3>
+  <p>
+  <div class="code">class NoTimer
+{
+public:
+	typedef int timer_t;
+	static inline timer_t addTimer( void (*cb)(void*), int milisseconds, void *data=0);
+	static inline timer_t cancelTimer(const timer_t &t);
+	static inline bool defined(const timer_t &t);
+};
+  </div>
+  <p>Example of a GTK+(GLIB) timer class: </p>
+<div class="code">class GLIBTimer
+{
+public:
+	typedef guint timer_t;
+	static timer_t addTimer( int (*cb)(void*), int milisseconds, void *data=0)
+	{
+		return g_timeout_add(milisseconds,cb,data);
+	}
+	static timer_t cancelTimer(const timer_t &t) {
+		g_source_remove(t);
+		return 0;
+	}
+	static inline bool defined(const timer_t &t) {
+		return t != 0;
+	}
+};
+</div>
+  </div>
+  
+  <div id="container">
+  <h2>The JAVA&trade; SerPro library</h2>
+See <a href="serprojava.html"> for Java&trade; library.</a>
+  </div>
+
+  <div id="container">
+  <h2>The protocols</h2>
+See <a href="serprohdlc.html"> for HDLC protocol definition.
+  </div>
+
+  <div id="container">
   <h2>Internals</h2>
   </div>
 
@@ -298,3 +360,4 @@ pageTracker._trackPageview();
 } catch(err) {}</script>
 </body>
 </html>
+

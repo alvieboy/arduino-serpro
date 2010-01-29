@@ -94,6 +94,11 @@ struct protocolImplementation
 	};
 
 	static callback const PROGMEM callbacks[Config::maxFunctions];
+	static command_t currentCommand;
+
+	static inline command_t getLastCommand() {
+		return currentCommand;
+	}
 
 	struct VariableBuffer{
 		const unsigned char *buffer;
@@ -110,7 +115,7 @@ struct protocolImplementation
 		MyProtocol::deferReply();
 	}
 
-	static inline void callFunction(int index, const unsigned char *data, buffer_size_t size)
+	static inline void callFunction(command_t index, const unsigned char *data, buffer_size_t size)
 	{
 		buffer_size_t pos = 0;
 #ifdef AVR
@@ -123,7 +128,7 @@ struct protocolImplementation
 	}
 
 	/* Only for Master */
-	static void sendPacket(uint8_t command, uint8_t *payload, size_t payload_size) {
+	static void sendPacket(command_t command, uint8_t *payload, size_t payload_size) {
 
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
@@ -132,14 +137,14 @@ struct protocolImplementation
 		MyProtocol::queueTransmit(p);
 	}
 
-	static void sendPacket(uint8_t command) {
+	static void sendPacket(command_t command) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		MyProtocol::queueTransmit(p);
 	}
 	/*
 
-	static void sendPacket(uint8_t command, uint8_t value) {
+	static void sendPacket(command_t command, uint8_t value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->append(value);
@@ -148,7 +153,7 @@ struct protocolImplementation
         */
 
 	template <class A>
-	static void sendPacket(uint8_t command, const A&value) {
+	static void sendPacket(command_t command, const A&value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->append(value);
@@ -156,7 +161,7 @@ struct protocolImplementation
 	}
 
 	template <class STRUCT>
-	static void sendPacket(uint8_t command, const STRUCT *value) {
+	static void sendPacket(command_t command, const STRUCT *value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->appendBuffer((uint8_t*)value,sizeof(STRUCT));
@@ -164,7 +169,7 @@ struct protocolImplementation
 	}
 
 	template <class A,class B>
-	static void sendPacket(uint8_t command, const A &value_a, const B &value_b) {
+	static void sendPacket(command_t command, const A &value_a, const B &value_b) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->append(value_a,value_b);
@@ -172,7 +177,7 @@ struct protocolImplementation
 	}
 
 	template <class A,class B,class C>
-	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
 						   const C&value_c) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
@@ -181,7 +186,7 @@ struct protocolImplementation
 	}
 
 	template <class A,class B,class C,class D>
-	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
 						   const C&value_c, const D &value_d) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
@@ -190,7 +195,7 @@ struct protocolImplementation
 	}
 
 	template <class A,class B,class C,class D,class E>
-	static void sendPacket(uint8_t command, const A &value_a, const B &value_b,
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
 						   const C&value_c, const D &value_d, const E &value_e) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
@@ -203,6 +208,9 @@ struct protocolImplementation
 									 buffer_size_t size)
 	{
 		buffer_size_t sz = 0; // TODO - put packet size here.
+
+		// TODO: move this to command_t
+		currentCommand = buf[0];
 		callFunction(buf[0], buf+1, sz-1);
 	}
 
@@ -488,8 +496,15 @@ struct deserializer<SerPro, void (A,B,C,D,E)> {
 };
 
 template<unsigned int>
+static void nohandler(void)
+{
+}
+
+template<unsigned int>
 struct functionHandler {
-	static void handle(void){}
+	static void handle(void) {
+		nohandler<1>();
+	}
 	typedef void (type)(void);
 };
 
@@ -499,12 +514,11 @@ struct functionHandler {
 	struct functionHandler<x> { \
 	static void handle
 
-#define DECLARE_INLINE_FUNCTION(x) \
-	template<> \
-	struct functionHandler<x> { \
-	static inline void handle
-
 #define END_FUNCTION };
+
+#define DEFAULT_FUNCTION \
+	template<> \
+	void nohandler<1>(void)
 
 
 #define DECLARE_SERPRO(config,serial,proto,name) \
@@ -534,6 +548,7 @@ struct functionHandler {
 
 #define IMPLEMENT_SERPRO(num,name,proto) \
 	typedef void(*serpro_function_type)(void); \
+	template<> name::command_t name::currentCommand = name::command_t(); \
 	typedef void(*serpro_deserializer_type)(const unsigned char*, name::buffer_size_t& pos,void(*)(void)); \
 	template<> \
 	name::callback const name::callbacks[] = { \

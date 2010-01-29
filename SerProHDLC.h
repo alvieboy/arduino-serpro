@@ -48,7 +48,7 @@ namespace std {
 
 #ifndef AVR
 #include <stdio.h>
-#define LOG(m...) fprintf(stderr,"[%d] ",getpid()); fprintf(stderr,m);
+#define LOG(m...) /* fprintf(stderr,"[%d] ",getpid()); fprintf(stderr,m); */
 #else
 #define LOG(m...)
 #endif

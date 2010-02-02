@@ -52,14 +52,36 @@ struct FixedBuffer {
 	unsigned char *buffer;
 };
 
-template<typename MyProtocol, typename A>
-static inline void serialize(A value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(value));
+struct VariableBuffer{
+	const unsigned char *buffer;
+	unsigned int size;
+	VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {
+	}
+};
+
+template<typename MyProtocol, class A>
+static inline void serialize(const A *value) {
+	MyProtocol::sendData((unsigned char*)value,sizeof(A),value);
 }
 
 template<typename MyProtocol>
 static inline void serialize(uint8_t value) {
 	MyProtocol::sendData(value);
+}
+
+template<typename MyProtocol>
+static inline void serialize(uint16_t value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(uint16_t));
+}
+
+template<typename MyProtocol>
+static inline void serialize(uint32_t value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(uint32_t));
+}
+
+template<typename MyProtocol>
+static inline void serialize(const VariableBuffer &buf) {
+	MyProtocol::sendData(buf.buffer, buf.size);
 }
 
 /* This is pretty much unsafe... */
@@ -160,13 +182,15 @@ struct protocolImplementation
 		MyProtocol::queueTransmit(p);
 	}
 
-	template <class STRUCT>
+	/*
+	 template <class STRUCT>
 	static void sendPacket(command_t command, const STRUCT *value) {
 		Packet *p = MyProtocol::createPacket();
 		p->append(command);
 		p->appendBuffer((uint8_t*)value,sizeof(STRUCT));
 		MyProtocol::queueTransmit(p);
-	}
+		}
+        */
 
 	template <class A,class B>
 	static void sendPacket(command_t command, const A &value_a, const B &value_b) {
@@ -235,7 +259,7 @@ struct protocolImplementation
 			MyProtocol::sendPostamble();
 		};
 
-	template<typename A>
+/*	template<typename A>
 		static void send(command_t command,const RawBuffer &value) {
 			MyProtocol::startPacket(value.size + sizeof(command) );
 			MyProtocol::sendPreamble();
@@ -252,7 +276,7 @@ struct protocolImplementation
 			MyProtocol::sendData(value.buffer,value.size);
 			MyProtocol::sendPostamble();
 		};
-
+  */
 	template<typename A,typename B>
 	static void send(command_t command, const A value_a, const B value_b) {
 		MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
@@ -318,6 +342,10 @@ struct protocolImplementation
 		serialize<MyProtocol>(value_e);
 		serialize<MyProtocol>(value_f);
 		MyProtocol::sendPostamble();
+	}
+
+	static inline RawBuffer getRawBuffer() {
+		return MyProtocol::getRawBuffer();
 	}
 };
 

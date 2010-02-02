@@ -386,7 +386,7 @@ public:
 	static inline RawBuffer getRawBuffer()
 	{
 		RawBuffer r;
-		r.buffer = pBuf+3;
+		r.buffer = pBuf+2;
 		r.size = lastPacketSize;
 		LOG("getRawBuffer() : size %u %u\n", r.size,lastPacketSize);
 		return r;

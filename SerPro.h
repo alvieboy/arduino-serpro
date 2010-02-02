@@ -60,8 +60,8 @@ struct VariableBuffer{
 };
 
 template<typename MyProtocol, class A>
-static inline void serialize(const A *value) {
-	MyProtocol::sendData((unsigned char*)value,sizeof(A),value);
+static inline void serialize(const A *const value) {
+	MyProtocol::sendData((unsigned char*)value,sizeof(A));
 }
 
 template<typename MyProtocol>
@@ -70,25 +70,42 @@ static inline void serialize(uint8_t value) {
 }
 
 template<typename MyProtocol>
-static inline void serialize(uint16_t value) {
+static inline void serialize(const uint16_t &value) {
 	MyProtocol::sendData((unsigned char*)&value,sizeof(uint16_t));
 }
 
 template<typename MyProtocol>
-static inline void serialize(uint32_t value) {
+static inline void serialize(const uint32_t &value) {
 	MyProtocol::sendData((unsigned char*)&value,sizeof(uint32_t));
 }
+/*
+template<typename MyProtocol>
+static inline void serialize(sint8_t value) {
+	MyProtocol::sendData((uint8_t)value);
+}
 
+template<typename MyProtocol>
+static inline void serialize(const sint16_t &value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(sint16_t));
+}
+
+template<typename MyProtocol>
+static inline void serialize(const sint32_t &value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(sint32_t));
+}
+*/
 template<typename MyProtocol>
 static inline void serialize(const VariableBuffer &buf) {
 	MyProtocol::sendData(buf.buffer, buf.size);
 }
 
 /* This is pretty much unsafe... */
+#if 0
 template<typename MyProtocol>
 MAYBESTATIC void serialize(const char *string) {
 	MyProtocol::sendData(string,strlen(string));
 }
+#endif
 
 /*
  Our main class definition.
@@ -255,7 +272,7 @@ struct protocolImplementation
 			MyProtocol::startPacket(sizeof(A)+sizeof(command));
 			MyProtocol::sendPreamble();
 			MyProtocol::sendData(command);
-			serialize<MyProtocol,A>(value);
+			serialize<MyProtocol>(value);
 			MyProtocol::sendPostamble();
 		};
 

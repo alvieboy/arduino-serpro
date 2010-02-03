@@ -392,7 +392,7 @@ public:
 		return r;
 	}
 
-	static inline void sendByte(uint8_t byte)
+	static void sendByte(uint8_t byte)
 	{
 		if (byte==HDLC_frameFlag || byte==HDLC_escapeFlag || (forceEscapingLow&&byte<0x20)) {
 			Serial::write(HDLC_escapeFlag);

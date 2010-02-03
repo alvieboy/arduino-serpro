@@ -78,22 +78,22 @@ template<typename MyProtocol>
 static inline void serialize(const uint32_t &value) {
 	MyProtocol::sendData((unsigned char*)&value,sizeof(uint32_t));
 }
-/*
+
 template<typename MyProtocol>
-static inline void serialize(sint8_t value) {
+static inline void serialize(int8_t value) {
 	MyProtocol::sendData((uint8_t)value);
 }
 
 template<typename MyProtocol>
-static inline void serialize(const sint16_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(sint16_t));
+static inline void serialize(const int16_t &value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(int16_t));
 }
 
 template<typename MyProtocol>
-static inline void serialize(const sint32_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(sint32_t));
+static inline void serialize(const int32_t &value) {
+	MyProtocol::sendData((unsigned char*)&value,sizeof(int32_t));
 }
-*/
+
 template<typename MyProtocol>
 static inline void serialize(const VariableBuffer &buf) {
 	MyProtocol::sendData(buf.buffer, buf.size);
@@ -133,11 +133,6 @@ struct protocolImplementation
 	};
 
 	static callback const PROGMEM callbacks[Config::maxFunctions];
-	static command_t currentCommand;
-
-	static inline command_t getLastCommand() {
-		return currentCommand;
-	}
 
 	struct VariableBuffer{
 		const unsigned char *buffer;
@@ -250,8 +245,6 @@ struct protocolImplementation
 	{
 		buffer_size_t sz = 0; // TODO - put packet size here.
 
-		// TODO: move this to command_t
-		currentCommand = buf[0];
 		callFunction(buf[0], buf+1, sz-1);
 	}
 
@@ -276,24 +269,6 @@ struct protocolImplementation
 			MyProtocol::sendPostamble();
 		};
 
-/*	template<typename A>
-		static void send(command_t command,const RawBuffer &value) {
-			MyProtocol::startPacket(value.size + sizeof(command) );
-			MyProtocol::sendPreamble();
-			MyProtocol::sendData(command);
-			MyProtocol::sendData(value.buffer,value.size);
-			MyProtocol::sendPostamble();
-		};
-
-	template<typename A>
-		static void send(command_t command,const VariableBuffer &value) {
-			MyProtocol::startPacket(value.size + sizeof(command) );
-			MyProtocol::sendPreamble();
-			MyProtocol::sendData(command);
-			MyProtocol::sendData(value.buffer,value.size);
-			MyProtocol::sendPostamble();
-		};
-  */
 	template<typename A,typename B>
 	static void send(command_t command, const A value_a, const B value_b) {
 		MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
@@ -547,9 +522,8 @@ static void nohandler(void)
 
 template<unsigned int>
 struct functionHandler {
-	static void handle(void) {
-		nohandler<1>();
-	}
+    static const int defined = 0;
+	static void handle(void);
 	typedef void (type)(void);
 };
 
@@ -557,6 +531,7 @@ struct functionHandler {
 #define DECLARE_FUNCTION(x) \
 	template<> \
 	struct functionHandler<x> { \
+    static const int defined = 1; \
 	static void handle
 
 #define END_FUNCTION };
@@ -587,13 +562,13 @@ struct functionHandler {
 
 #define EXPAND_DELIM ,
 #define EXPAND_VALUE(NUMBER,MAX) \
-	{ (serpro_deserializer_type)&deserializer<SerPro,typeof(functionHandler<MAX-NUMBER>::handle)>::handle,(serpro_function_type)&functionHandler<MAX-NUMBER>::handle }
+	{ (serpro_deserializer_type)&deserializer<SerPro,typeof(functionHandler<MAX-NUMBER>::handle)>::handle, \
+	functionHandler<MAX-NUMBER>::defined ? (serpro_function_type)&functionHandler<MAX-NUMBER>::handle:(serpro_function_type)&nohandler<1> }
 
 #include "preprocessor_table.h"
 
 #define IMPLEMENT_SERPRO(num,name,proto) \
 	typedef void(*serpro_function_type)(void); \
-	template<> name::command_t name::currentCommand = name::command_t(); \
 	typedef void(*serpro_deserializer_type)(const unsigned char*, name::buffer_size_t& pos,void(*)(void)); \
 	template<> \
 	name::callback const name::callbacks[] = { \

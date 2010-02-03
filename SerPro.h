@@ -514,6 +514,7 @@ struct deserializer<SerPro, void (A,B,C,D,E)> {
 	}
 };
 
+/* Default empty handler. Might be overriden using specialization */
 template<unsigned int>
 static void nohandler(void)
 {
@@ -522,8 +523,8 @@ static void nohandler(void)
 template<unsigned int>
 struct functionHandler {
     static const int defined = 0;
-	static void handle(void);
-	typedef void (type)(void);
+/*	static void handle(void);
+	typedef void (type)(void);*/
 };
 
 

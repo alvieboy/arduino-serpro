@@ -121,14 +121,11 @@ struct protocolImplementation
 	typedef typename MyProtocol::buffer_size_t buffer_size_t;
 	typedef typename MyProtocol::RawBuffer RawBuffer;
 
-	// callback structure. One for each function we handle. We define both
-	// deserializer and function to call.
+	// callback structure. One for each function we handle. 
 
-	typedef  void (*func_type)(void);
-	typedef  void (*deserialize_func_type)(const unsigned char *, buffer_size_t&, func_type);
+	typedef  void (*func_type)(const unsigned char *, buffer_size_t&);
 
 	struct callback {
-		deserialize_func_type deserialize;
 		func_type func;
 	};
 
@@ -445,14 +442,13 @@ struct deserialize < SerPro, FixedBuffer<BUFSIZE> > {
 	}
 };
 
-template<class SerPro, typename B>
+template<class SerPro, class HANDLER>
 struct deserializer {
-	typedef B func_type;
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 };
 
 template<class SerPro>
-struct deserializer<SerPro, void ()> {
+struct deserializer<SerPro, typename HANDLER::handle> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static inline void handle(const unsigned char *,buffer_size_t &pos, void (*func)(void)) {
 		func();

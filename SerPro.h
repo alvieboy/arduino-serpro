@@ -141,6 +141,7 @@ struct protocolImplementation
 	static void connect() {
 		MyProtocol::startLink();
 	}
+
 	static inline void deferReply()
 	{
 		MyProtocol::deferReply();
@@ -173,15 +174,6 @@ struct protocolImplementation
 		p->append(command);
 		MyProtocol::queueTransmit(p);
 	}
-	/*
-
-	static void sendPacket(command_t command, uint8_t value) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value);
-		MyProtocol::queueTransmit(p);
-		}
-        */
 
 	template <class A>
 	static void sendPacket(command_t command, const A&value) {
@@ -190,16 +182,6 @@ struct protocolImplementation
 		p->append(value);
 		MyProtocol::queueTransmit(p);
 	}
-
-	/*
-	 template <class STRUCT>
-	static void sendPacket(command_t command, const STRUCT *value) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->appendBuffer((uint8_t*)value,sizeof(STRUCT));
-		MyProtocol::queueTransmit(p);
-		}
-        */
 
 	template <class A,class B>
 	static void sendPacket(command_t command, const A &value_a, const B &value_b) {
@@ -424,9 +406,8 @@ template<class SerPro, class STRUCT>
 struct deserialize<SerPro,const STRUCT*> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static const STRUCT *deser(const unsigned char *b, buffer_size_t &pos) {
-		STRUCT *p = (STRUCT*)b;
 		pos+=sizeof(STRUCT);
-		return p;
+		return (STRUCT*)b;
 	}
 };
 
@@ -521,7 +502,6 @@ template<unsigned int>
 struct functionHandler {
     static const int defined = 0;
 	static void handle(void);
-	typedef void (type)(void);
 };
 
 

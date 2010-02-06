@@ -123,7 +123,7 @@ struct protocolImplementation
 
 	// callback structure. One for each function we handle. 
 
-	typedef  void (*func_type)(const unsigned char *, buffer_size_t&);
+	typedef void (*func_type)(const unsigned char *, buffer_size_t&);
 
 	struct callback {
 		func_type func;

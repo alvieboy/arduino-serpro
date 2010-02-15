@@ -614,6 +614,10 @@ public:
 		}
 	}
 
+	static inline bool isLinkUp() {
+		return !!(linkFlags & LINK_FLAG_LINKUP);
+	}
+
 	static void setLinkUP()
 	{
 		linkFlags |= LINK_FLAG_LINKUP;

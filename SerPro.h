@@ -320,10 +320,10 @@ struct protocolImplementation
 };
 
 
-template<class SerPro,typename A>
+template<class SerPro, typename A>
 struct deserialize {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static A deser(const unsigned char *b, buffer_size_t &pos);
+	static A deser(const unsigned char *&b);
 };
 
 /* To avoid possible errors with unknown structures, we define
@@ -333,9 +333,9 @@ struct deserialize {
 template<class SerPro>
 struct deserialize<SerPro,uint8_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline uint8_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint8_t value = *((uint8_t*)&b[pos]);
-		pos+=sizeof(uint8_t);
+	static inline uint8_t deser(const unsigned char *&b) {
+		uint8_t value = *(uint8_t*)b;
+		b+=sizeof(uint8_t);
 		return value;
 	}
 };
@@ -343,9 +343,9 @@ struct deserialize<SerPro,uint8_t> {
 template<class SerPro>
 struct deserialize<SerPro,int8_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline int8_t deser(const unsigned char *b, buffer_size_t &pos) {
-		int8_t value = *(int8_t*)&b[pos];
-		pos+=sizeof(int8_t);
+	static inline int8_t deser(const unsigned char *&b) {
+		int8_t value = *(int8_t*)b;
+		b+=sizeof(int8_t);
 		return value;
 	}
 };
@@ -353,9 +353,9 @@ struct deserialize<SerPro,int8_t> {
 template<class SerPro>
 struct deserialize<SerPro,uint16_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline uint16_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint16_t value = *(uint16_t*)&b[pos];
-		pos+=sizeof(uint16_t);
+	static inline uint16_t deser(const unsigned char *&b) {
+		uint16_t value = *(uint16_t*)b;
+		b+=sizeof(uint16_t);
 		return value;
 	}
 };
@@ -363,9 +363,9 @@ struct deserialize<SerPro,uint16_t> {
 template<class SerPro>
 struct deserialize<SerPro,int16_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline int16_t deser(const unsigned char *b, buffer_size_t &pos) {
-		int8_t value = *(int8_t*)&b[pos];
-		pos+=sizeof(int16_t);
+	static inline int16_t deser(const unsigned char *&b) {
+		int8_t value = *(int8_t*)b;
+		b+=sizeof(int16_t);
 		return value;
 	}
 };
@@ -373,9 +373,9 @@ struct deserialize<SerPro,int16_t> {
 template<class SerPro>
 struct deserialize<SerPro,int32_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline int32_t deser(const unsigned char *b, buffer_size_t &pos) {
-		int value = *(int*)&b[pos];
-		pos+=sizeof(int32_t);
+	static inline int32_t deser(const unsigned char *&b) {
+		int value = *(int32_t*)b;
+		b+=sizeof(int32_t);
 		return value;
 	}
 };
@@ -383,30 +383,19 @@ struct deserialize<SerPro,int32_t> {
 template<class SerPro>
 struct deserialize<SerPro,uint32_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline uint32_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint32_t value = *(int*)&b[pos];
-		pos+=sizeof(uint32_t);
+	static inline uint32_t deser(const unsigned char *&b) {
+		uint32_t value = *(uint32_t*)b;
+		b+=sizeof(uint32_t);
 		return value;
 	}
 };
-
-template<class SerPro>
-struct deserialize<SerPro,char*> {
-	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static char* deser(const unsigned char *b, buffer_size_t &pos) {
-		char *value = (char*)&b[pos];
-		pos+=strlen(value);
-		return value;
-	}
-};
-
 
 template<class SerPro, class STRUCT>
 struct deserialize<SerPro,const STRUCT*> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static const STRUCT *deser(const unsigned char *b, buffer_size_t &pos) {
-		STRUCT *r = (STRUCT*)&b[pos];
-		pos+=sizeof(STRUCT);
+	static const STRUCT *deser(const unsigned char *&b) {
+		STRUCT *r = (STRUCT*)b;
+		b+=sizeof(STRUCT);
 		return r;
 	}
 };
@@ -415,10 +404,10 @@ struct deserialize<SerPro,const STRUCT*> {
 template<class SerPro,unsigned int BUFSIZE>
 struct deserialize < SerPro, FixedBuffer<BUFSIZE> > {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static FixedBuffer<BUFSIZE> deser(const unsigned char *b, buffer_size_t &pos) {
+	static FixedBuffer<BUFSIZE> deser(const unsigned char *&b) {
 		FixedBuffer<BUFSIZE> buf;
-		buf.buffer=(unsigned char*)&b[pos];
-		pos+=BUFSIZE;
+		buf.buffer=(unsigned char*)b;
+		b+=BUFSIZE;
 		return buf;
 	}
 };
@@ -432,7 +421,7 @@ template<class SerPro, class Function>
 struct deserializer<SerPro, Function, void ()> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 
-	static inline void handle(const unsigned char *,buffer_size_t &pos) {
+	static inline void handle(const unsigned char *&b) {
 		Function::handle();
 	}
 };
@@ -440,8 +429,8 @@ struct deserializer<SerPro, Function, void ()> {
 template<class SerPro, class Function, typename A>
 struct deserializer<SerPro, Function, void (A)> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline void handle(const unsigned char *b, buffer_size_t &pos) {
-		A val_a=deserialize<SerPro,A>::deser(b,pos);
+	static inline void handle(const unsigned char *&b) {
+		A val_a=deserialize<SerPro,A>::deser(b);
 		Function::handle(val_a);
 	}
 };
@@ -450,9 +439,9 @@ struct deserializer<SerPro, Function, void (A)> {
 template<class SerPro, class Function,typename A,typename B>
 struct deserializer<SerPro, Function, void (A,B)> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline void handle(const unsigned char *b, buffer_size_t &pos) {
-		A val_a=deserialize<SerPro,A>::deser(b,pos);
-		B val_b=deserialize<SerPro,B>::deser(b,pos);
+	static inline void handle(const unsigned char *&b) {
+		A val_a=deserialize<SerPro,A>::deser(b);
+		B val_b=deserialize<SerPro,B>::deser(b);
 		Function::handle(val_a,val_b);
 	}
 };
@@ -460,10 +449,10 @@ struct deserializer<SerPro, Function, void (A,B)> {
 template<class SerPro, class Function, typename A,typename B, typename C>
 struct deserializer<SerPro, Function, void (A,B,C)> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline void handle(const unsigned char *b, buffer_size_t &pos) {
-		A val_a=deserialize<SerPro,A>::deser(b,pos);
-		B val_b=deserialize<SerPro,B>::deser(b,pos);
-		C val_c=deserialize<SerPro,C>::deser(b,pos);
+	static inline void handle(const unsigned char *&b) {
+		A val_a=deserialize<SerPro,A>::deser(b);
+		B val_b=deserialize<SerPro,B>::deser(b);
+		C val_c=deserialize<SerPro,C>::deser(b);
 		Function::handle(val_a, val_b, val_c);
 	}
 };
@@ -471,11 +460,11 @@ struct deserializer<SerPro, Function, void (A,B,C)> {
 template<class SerPro, class Function, typename A,typename B, typename C,typename D>
 struct deserializer<SerPro, Function, void (A,B,C,D)> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline void handle(const unsigned char *b, buffer_size_t &pos) {
-		A val_a=deserialize<SerPro,A>::deser(b,pos);
-		B val_b=deserialize<SerPro,B>::deser(b,pos);
-		C val_c=deserialize<SerPro,C>::deser(b,pos);
-		D val_d=deserialize<SerPro,D>::deser(b,pos);
+	static inline void handle(const unsigned char *&b) {
+		A val_a=deserialize<SerPro,A>::deser(b);
+		B val_b=deserialize<SerPro,B>::deser(b);
+		C val_c=deserialize<SerPro,C>::deser(b);
+		D val_d=deserialize<SerPro,D>::deser(b);
 		Function::handle(val_a, val_b, val_c, val_d);
 	}
 };
@@ -483,19 +472,19 @@ struct deserializer<SerPro, Function, void (A,B,C,D)> {
 template<class SerPro, class Function,typename A,typename B, typename C,typename D,typename E>
 struct deserializer<SerPro, Function, void (A,B,C,D,E)> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static inline void handle(const unsigned char *b, buffer_size_t &pos) {
-		A val_a=deserialize<SerPro,A>::deser(b,pos);
-		B val_b=deserialize<SerPro,B>::deser(b,pos);
-		C val_c=deserialize<SerPro,C>::deser(b,pos);
-		D val_d=deserialize<SerPro,D>::deser(b,pos);
-		E val_e=deserialize<SerPro,E>::deser(b,pos);
+	static inline void handle(const unsigned char *&b) {
+		A val_a=deserialize<SerPro,A>::deser(b);
+		B val_b=deserialize<SerPro,B>::deser(b);
+		C val_c=deserialize<SerPro,C>::deser(b);
+		D val_d=deserialize<SerPro,D>::deser(b);
+		E val_e=deserialize<SerPro,E>::deser(b);
 		Function::handle(val_a, val_b, val_c, val_d, val_e);
 	}
 };
 
 template<class SerPro, unsigned int>
 struct EmptyHandler {
-	static void handle(unsigned char *, typename SerPro::buffer_size_t &pos)
+	static void handle(unsigned char *&b)
 	{
 	}
 };

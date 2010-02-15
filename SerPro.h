@@ -151,7 +151,7 @@ struct protocolImplementation
 	{
 		buffer_size_t pos = 0;
 #ifdef AVR
-		func_type func = (func_type)pgm_read_word(&callbacks[index].deserialize);
+		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
 		func(data,pos);
 #else
 		callbacks[index].func(data,pos);

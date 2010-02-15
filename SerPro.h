@@ -509,7 +509,7 @@ struct EmptyHandler {
 template<unsigned int>
 struct functionHandler {
     static const int defined = 0;
-	static inline void handle(void);
+	static void handle(void);
 };
 
 
@@ -517,14 +517,14 @@ struct functionHandler {
 	template<> \
 	struct functionHandler<x> { \
     static const int defined = 1; \
-	static inline void handle
+	static void handle
 
 #define END_FUNCTION };
 
 #define DEFAULT_FUNCTION(serpro) \
 	template<> \
 	struct EmptyHandler<serpro,1> { \
-	static inline void handle
+	static void handle
 
 
 #define DECLARE_SERPRO(config,serial,proto,name) \

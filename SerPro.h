@@ -406,8 +406,9 @@ template<class SerPro, class STRUCT>
 struct deserialize<SerPro,const STRUCT*> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static const STRUCT *deser(const unsigned char *b, buffer_size_t &pos) {
+		STRUCT *r = (STRUCT*)&b[pos];
 		pos+=sizeof(STRUCT);
-		return (STRUCT*)b;
+		return r;
 	}
 };
 

@@ -1,6 +1,5 @@
 #include <iostream>
 #include "SerProHDLC.h"
-#include "SerProPacket.h"
 #include "SerPro.h"
 #include "crc16.h"
 
@@ -11,10 +10,6 @@ public:
 	static void write(const unsigned char *buf, unsigned int size);
 	static void flush();
 };
-
-class Timer
-{
-}
 
 struct SerProConfig {
 	static unsigned int const maxFunctions = 4;

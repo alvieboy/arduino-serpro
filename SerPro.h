@@ -107,6 +107,12 @@ MAYBESTATIC void serialize(const char *string) {
 }
 #endif
 
+/* Data dumper */
+template<unsigned int>
+static void Dumper(const unsigned char *buffer,size_t size)
+{
+}
+
 /*
  Our main class definition.
  TODO: document
@@ -226,6 +232,9 @@ struct protocolImplementation
 									 buffer_size_t size)
 	{
 		buffer_size_t sz = 0; // TODO - put packet size here.
+
+		// Dump facility
+		Dumper<1>(buf,size);
 
 		callFunction(buf[0], buf+1, sz-1);
 	}

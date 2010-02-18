@@ -454,14 +454,13 @@ public:
 	static timer_t linktimer;
 	static timer_t retransmittimer;
 
-	static int linkExpired(void*d)
+	static void linkExpired(void*d)
 	{
 		LOG("Link timeout, retrying\n");
 		startLink();
-		return 0;
 	}
 
-	static int retransmitTimerExpired(void*d)
+	static void retransmitTimerExpired(void*d)
 	{
 		if (isLinkUp()) {
 			/* Retransmit queued frames */
@@ -469,7 +468,6 @@ public:
 			if (p)
 				queueTransmit(p);
 		}
-		return 0;
 	}
 
 	static void startLink()
@@ -498,17 +496,19 @@ public:
 
 	static void startXmit()
 	{
-		HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
-		// Compute control field.
-		uint8_t control;
-		control = (txQueue.peekIndex())<<1;
-		control |= 0x10; // Poll
-		control |= (rxNextSeqNum<<5);
-		p->send(control);
-		if (Timer::defined(retransmittimer)) {
-			retransmittimer = Timer::cancelTimer(retransmittimer);
+		if (Config::implementationType==Master) {
+			HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
+			// Compute control field.
+			uint8_t control;
+			control = (txQueue.peekIndex())<<1;
+			control |= 0x10; // Poll
+			control |= (rxNextSeqNum<<5);
+			p->send(control);
+			if (Timer::defined(retransmittimer)) {
+				retransmittimer = Timer::cancelTimer(retransmittimer);
+			}
+			retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
 		}
-		retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
 	}
 
 	static void checkXmit()

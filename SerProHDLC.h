@@ -452,11 +452,23 @@ public:
 
 	typedef typename Timer::timer_t timer_t;
 	static timer_t linktimer;
+	static timer_t retransmittimer;
 
 	static int linkExpired(void*d)
 	{
 		LOG("Link timeout, retrying\n");
 		startLink();
+		return 0;
+	}
+
+	static int retransmitTimerExpired(void*d)
+	{
+		if (isLinkUp()) {
+			/* Retransmit queued frames */
+			Packet *p = txQueue.peek();
+			if (p)
+				queueTransmit(p);
+		}
 		return 0;
 	}
 
@@ -493,6 +505,10 @@ public:
 		control |= 0x10; // Poll
 		control |= (rxNextSeqNum<<5);
 		p->send(control);
+		if (Timer::defined(retransmittimer)) {
+			retransmittimer = Timer::cancelTimer(retransmittimer);
+		}
+		retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
 	}
 
 	static void checkXmit()
@@ -600,7 +616,13 @@ public:
 		case RR:
 			LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
 			if (Config::implementationType==Master) {
+
 				txQueue.ackUpTo(h->control.sframe.seq);
+
+				if (Timer::defined(retransmittimer) && txQueue.toBeAcked()==0) {
+					retransmittimer = Timer::cancelTimer(retransmittimer);
+				}
+
 				checkXmit();
 			}
 			break;
@@ -861,6 +883,7 @@ public:
 	template<> bool SerPro::MyProtocol::inPacket = false; \
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
+	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::retransmittimer=timer_t(); \
 	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
 	template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue(); \
 	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();

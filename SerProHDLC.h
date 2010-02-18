@@ -454,13 +454,14 @@ public:
 	static timer_t linktimer;
 	static timer_t retransmittimer;
 
-	static void linkExpired(void*d)
+	static int linkExpired(void*d)
 	{
 		LOG("Link timeout, retrying\n");
 		startLink();
+        return 0;
 	}
 
-	static void retransmitTimerExpired(void*d)
+	static int retransmitTimerExpired(void*d)
 	{
 		if (isLinkUp()) {
 			/* Retransmit queued frames */
@@ -468,6 +469,7 @@ public:
 			if (p)
 				queueTransmit(p);
 		}
+		return 0;
 	}
 
 	static void startLink()

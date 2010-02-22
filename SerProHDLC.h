@@ -429,7 +429,8 @@ public:
 		UI          = 0x00, // 00-000 Unnumbered Information
 		SNRM        = 0x80, // 00-001 Set Normal Response Mode
 		RD          = 0x40, // 00-010 Request Disconnect
-		// Not used 00-011
+		// Not used 00-011 - Reused for arduino extension
+		SNURM       = 0xC0, // 00-011 Set Normal Unbuffered Response Mode
 		UP          = 0x20, // 00-100 Unnumbered Poll
 		// Not used 00-101
 		UA          = 0x60, // 00-110 Unnumbered Acknowledgment
@@ -478,7 +479,7 @@ public:
 			linktimer = Timer::cancelTimer(linktimer);
 		}
 		linktimer = Timer::addTimer( &linkExpired, 1000);
-		sendUnnumberedFrame( SNRM );
+		sendUnnumberedFrame( SNURM );
 	}
 
 	static inline void sendInformationControlField()
@@ -660,7 +661,7 @@ public:
 		unnumbered_command c = (unnumbered_command)(h->control.value & 0xEC);
 		LOG("Unnumbered frame 0x%02x (0x%02x)\n",c,h->control.value);
 		switch(c) {
-		case SNRM:
+		case SNURM:
 			sendUnnumberedFrame(UA);
 			setLinkUP();
 			// Reset tx/rx sequences

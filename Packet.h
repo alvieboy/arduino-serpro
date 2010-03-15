@@ -31,6 +31,9 @@ public:
 	virtual void append(const uint16_t &b) = 0;
 	virtual void append(const uint32_t &b) = 0;
 
+        template<class STRUCT>
+		void append(const STRUCT *s) { appendBuffer((uint8_t*)s,sizeof(STRUCT));}
+
 	virtual void appendBuffer(const uint8_t *buf, size_t size) = 0;
 	
 	template<typename A,typename B>

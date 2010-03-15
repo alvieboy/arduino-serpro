@@ -48,7 +48,7 @@ namespace std {
 
 #ifndef AVR
 #include <stdio.h>
-#define LOG(m...) /* fprintf(stderr,"[%d] ",getpid()); fprintf(stderr,m); */
+#define LOG(m...) /* fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m); */
 #else
 #define LOG(m...)
 #endif
@@ -464,11 +464,18 @@ public:
 
 	static int retransmitTimerExpired(void*d)
 	{
+                LOG("TX timeout\n");
 		if (isLinkUp()) {
 			/* Retransmit queued frames */
 			Packet *p = txQueue.peek();
-			if (p)
+			if (p) {
 				queueTransmit(p);
+				if (Timer::defined(retransmittimer)) {
+					retransmittimer = Timer::cancelTimer(retransmittimer);
+				}
+				retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
+			}
+
 		}
 		return 0;
 	}
@@ -835,7 +842,7 @@ public:
 
 	static void processData(uint8_t bIn)
 	{
-		LOG("Process data: %d (0x%02x)\n",bIn,bIn);
+		//LOG("Process data: %d (0x%02x)\n",bIn,bIn);
 		if (bIn==HDLC_escapeFlag) {
 			unEscaping=true;
 			return;

@@ -470,10 +470,7 @@ public:
 			Packet *p = txQueue.peek();
 			if (p) {
 				queueTransmit(p);
-				if (Timer::defined(retransmittimer)) {
-					retransmittimer = Timer::cancelTimer(retransmittimer);
-				}
-				retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
+				startXmit();
 			}
 
 		}

@@ -244,7 +244,7 @@ public:
 		LOG("PEEK: ack %u, tx %u\n",ack,tx);
 		if (toBeAcked()>0) {
 			Packet *r = slots[(tx-1)&0x7];
-			LOG("PEEK packet: %p (index %u)",r,(tx-1)&0x7);
+			LOG("PEEK packet: %p (index %u)\n",r,(tx-1)&0x7);
 			return r;
 		} else {
 			return NULL;
@@ -257,7 +257,7 @@ public:
 		while (i!=num) {
 			if (slots[i]) {
 				/* Remove */
-				LOG("Acking %u\n",i);
+				LOG("Acking %u (%p) and freeing\n",i,slots[i]);
 				delete(slots[i]);
 				slots[i]=NULL;
 			} else {
@@ -466,13 +466,7 @@ public:
 	{
                 LOG("TX timeout\n");
 		if (isLinkUp()) {
-			/* Retransmit queued frames */
-			Packet *p = txQueue.peek();
-			if (p) {
-				queueTransmit(p);
-				startXmit();
-			}
-
+		    startXmit();
 		}
 		return 0;
 	}
@@ -504,7 +498,8 @@ public:
 	static void startXmit()
 	{
 		if (Config::implementationType==Master) {
-			HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
+		    HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
+		    if (p) {
 			// Compute control field.
 			uint8_t control;
 			control = (txQueue.peekIndex())<<1;
@@ -515,6 +510,7 @@ public:
 				retransmittimer = Timer::cancelTimer(retransmittimer);
 			}
 			retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
+		    }
 		}
 	}
 
@@ -525,7 +521,7 @@ public:
 			if (txQueue.toBeAcked()==0 && inputQueue.size()>0) {
 				Packet *p = inputQueue.front();
 				inputQueue.pop();
-				LOG("Queuing packet %p\n",p);
+				LOG("Queuing packet for transmission %p\n",p);
 				queueTransmit(p);
 			}
 		}
@@ -534,7 +530,6 @@ public:
 	static int queueTransmit(Packet *p)
 	{
 		if (Config::implementationType==Master) {
-
 			if (txQueue.toBeAcked()==0) {
 				txQueue.queue( p );
 				startXmit();

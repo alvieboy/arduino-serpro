@@ -164,7 +164,11 @@ struct protocolImplementation
 		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
 		deserialize(data,pos,func);
 #else
-		callbacks[index].deserialize(data,pos,callbacks[index].func);
+		if (index>=Config::maxFunctions) {
+		    fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
+		} else {
+		    callbacks[index].deserialize(data,pos,callbacks[index].func);
+		}
 #endif
 	}
 

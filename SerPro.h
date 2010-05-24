@@ -165,7 +165,7 @@ struct protocolImplementation
 		deserialize(data,pos,func);
 #else
 		if (index>=Config::maxFunctions) {
-		    fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
+		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
 		} else {
 		    callbacks[index].deserialize(data,pos,callbacks[index].func);
 		}

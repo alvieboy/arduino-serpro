@@ -48,9 +48,11 @@ namespace std {
 
 #ifndef AVR
 #include <stdio.h>
-#define LOG(m...) /* fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m); */
+#define LOG(m...)  fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);
+#define LOGN(m...) fprintf(stderr,m);
 #else
 #define LOG(m...)
+#define LOGN(m...)
 #endif
 
 
@@ -290,15 +292,14 @@ template<event_type t>
 static inline void handleEvent() {
 }
 
-template<class Config,class Serial,class Implementation,class Timer> class SerProHDLC
+template<class Config,class Serial,class Implementation,class Timer,typename CRC=CRC16_ccitt> class SerProHDLC
 {
 public:
 	/* Buffer */
 	static unsigned char pBuf[Config::maxPacketSize];
 
-	typedef CRC16_ccitt CRCTYPE;
-	typedef CRCTYPE::crc_t crc_t;
-
+	typedef typename CRC::crc_t crc_t;
+	typedef CRC CRCTYPE;
 	static CRCTYPE incrc,outcrc;
 
 	typedef uint8_t command_t;
@@ -379,9 +380,9 @@ public:
 		LOG("Packet: %d bytes\n", lastPacketSize);
 		LOG("Dump (hex): ");
 		for (i=0; i<lastPacketSize; i++) {
-			LOG("0x%02X ", (unsigned)pBuf[i+1]);
+			LOGN("0x%02X ", (unsigned)pBuf[i+2]);
 		}
-		LOG("\n");
+		LOGN("\n");
 	}
 	static inline RawBuffer getRawBuffer()
 	{
@@ -394,6 +395,7 @@ public:
 
 	static void sendByte(uint8_t byte)
 	{
+		//LOG("BYTE %02x, force %d\n", byte, forceEscapingLow);
 		if (byte==HDLC_frameFlag || byte==HDLC_escapeFlag || (forceEscapingLow&&byte<0x20)) {
 			Serial::write(HDLC_escapeFlag);
 			Serial::write(byte ^ HDLC_escapeXOR);
@@ -549,6 +551,15 @@ public:
 		sendInformationControlField();
 	}
 
+	static void sendPreamble(uint8_t control)
+	{
+		Serial::write( HDLC_frameFlag );
+		sendByte( (uint8_t)Config::stationId );
+		outcrc.update( (uint8_t)Config::stationId );
+		sendByte(control);
+		outcrc.update(control);
+	}
+
 	static void sendPostamble()
 	{
 		CRC16_ccitt::crc_t crc = outcrc.get();
@@ -683,7 +694,9 @@ public:
 					linktimer = Timer::cancelTimer(linktimer);
 			}
 			break;
-
+		case UI:
+			Implementation::processPacket(pBuf+2,pBufPtr-4);
+			break;
 		default:
 			sendUnnumberedFrame(DM);
 			setLinkDOWN();
@@ -779,7 +792,7 @@ public:
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
 		lastPacketSize = pBufPtr-4;
 		LOG("Packet details: destination ID %u, control 0x%02x\n", h->address,h->control.value);
-
+		dumpPacket();
 		if ((h->control.frame_type.flag & 1) == 0) {
 			/* Information  */
 			LOG("Information frame\n");

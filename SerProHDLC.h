@@ -292,14 +292,26 @@ template<event_type t>
 static inline void handleEvent() {
 }
 
-template<class Config,class Serial,class Implementation,class Timer,typename CRC=CRC16_ccitt> class SerProHDLC
+typedef enum {
+	FULL,      /* Full implementation */
+	BASIC,     /* Basic (arduino) implementation */
+	MINIMAL    /* Minimal */
+} HDLCImplementationType;
+
+struct HDLC_DefaultConfig {
+	typedef CRC16_ccitt CRC;
+	static const HDLCImplementationType implementationType = BASIC;
+};
+
+template<class Config,class Serial,class Implementation,class Timer> class SerProHDLC
 {
 public:
 	/* Buffer */
 	static unsigned char pBuf[Config::maxPacketSize];
+	typedef typename Config::HDLC::CRC CRCTYPE;
 
-	typedef typename CRC::crc_t crc_t;
-	typedef CRC CRCTYPE;
+	typedef typename CRCTYPE::crc_t crc_t;
+
 	static CRCTYPE incrc,outcrc;
 
 	typedef uint8_t command_t;
@@ -459,27 +471,38 @@ public:
 
 	static int linkExpired(void*d)
 	{
-		LOG("Link timeout, retrying\n");
-		startLink();
+		if (Config::HDLC::implementationType == BASIC ||
+			Config::HDLC::implementationType == FULL ) {
+			LOG("Link timeout, retrying\n");
+			startLink();
+		}
 		return 0;
 	}
 
 	static int retransmitTimerExpired(void*d)
 	{
-                LOG("TX timeout\n");
-		if (isLinkUp()) {
-		    startXmit();
+		if (Config::HDLC::implementationType == BASIC ||
+			Config::HDLC::implementationType == FULL ) {
+
+			LOG("TX timeout\n");
+			if (isLinkUp()) {
+				startXmit();
+			}
 		}
 		return 0;
 	}
 
 	static void startLink()
 	{
-		if (Timer::defined(linktimer)) {
-			linktimer = Timer::cancelTimer(linktimer);
+		if (Config::HDLC::implementationType == BASIC ||
+			Config::HDLC::implementationType == FULL ) {
+
+			if (Timer::defined(linktimer)) {
+				linktimer = Timer::cancelTimer(linktimer);
+			}
+			linktimer = Timer::addTimer( &linkExpired, 1000);
+			sendUnnumberedFrame( SNURM );
 		}
-		linktimer = Timer::addTimer( &linkExpired, 1000);
-		sendUnnumberedFrame( SNURM );
 	}
 
 	static inline void sendInformationControlField()
@@ -546,16 +569,16 @@ public:
 	static void sendPreamble()
 	{
 		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::stationId );
-		outcrc.update( (uint8_t)Config::stationId );
+		sendByte( (uint8_t)Config::HDLC::stationId );
+		outcrc.update( (uint8_t)Config::HDLC::stationId );
 		sendInformationControlField();
 	}
 
 	static void sendPreamble(uint8_t control)
 	{
 		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::stationId );
-		outcrc.update( (uint8_t)Config::stationId );
+		sendByte( (uint8_t)Config::HDLC::stationId );
+		outcrc.update( (uint8_t)Config::HDLC::stationId );
 		sendByte(control);
 		outcrc.update(control);
 	}
@@ -672,35 +695,51 @@ public:
 		LOG("Unnumbered frame 0x%02x (0x%02x)\n",c,h->control.value);
 		switch(c) {
 		case SNURM:
-			sendUnnumberedFrame(UA);
-			setLinkUP();
-			// Reset tx/rx sequences
-			txSeqNum=0;
-			rxNextSeqNum=0;
-			LOG("Link up, NRM\n");
+			if (Config::HDLC::implementationType == BASIC ||
+				Config::HDLC::implementationType == FULL ) {
+
+				sendUnnumberedFrame(UA);
+				setLinkUP();
+				// Reset tx/rx sequences
+				txSeqNum=0;
+				rxNextSeqNum=0;
+				LOG("Link up, NRM\n");
+			}
 			break;
 		case DM:
-			setLinkDOWN();
-			LOG("Link down\n");
+			if (Config::HDLC::implementationType == BASIC ||
+				Config::HDLC::implementationType == FULL ) {
+				setLinkDOWN();
+				LOG("Link down\n");
+			}
 			break;
 		case UA:
-			setLinkUP();
-			// Reset tx/rx sequences
-			txSeqNum=0;
-			rxNextSeqNum=0;
-			LOG("Link up, by our request\n");
-			if (Config::implementationType==Master) {
-				if (Timer::defined(linktimer))
-					linktimer = Timer::cancelTimer(linktimer);
+			if (Config::HDLC::implementationType == BASIC ||
+				Config::HDLC::implementationType == FULL ) {
+
+				setLinkUP();
+				// Reset tx/rx sequences
+				txSeqNum=0;
+				rxNextSeqNum=0;
+				LOG("Link up, by our request\n");
+				if (Config::implementationType==Master) {
+					if (Timer::defined(linktimer))
+						linktimer = Timer::cancelTimer(linktimer);
+				}
 			}
 			break;
 		case UI:
-			Implementation::processPacket(pBuf+2,pBufPtr-4);
+			if (Config::HDLC::implementationType == MINIMAL) {
+				Implementation::processPacket(pBuf+2,pBufPtr-4);
+			}
 			break;
 		default:
-			sendUnnumberedFrame(DM);
-			setLinkDOWN();
-			LOG("Link down\n");
+            if (Config::HDLC::implementationType == BASIC ||
+				Config::HDLC::implementationType == FULL ) {
+				sendUnnumberedFrame(DM);
+				setLinkDOWN();
+				LOG("Link down\n");
+			}
 			break;
 		}
 	}
@@ -713,8 +752,8 @@ public:
 		startPacket(0);
 		LOG("V: %02x c=%02x\n",v,c);
 		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::stationId );
-		outcrc.update( (uint8_t)Config::stationId );
+		sendByte( (uint8_t)Config::HDLC::stationId );
+		outcrc.update( (uint8_t)Config::HDLC::stationId );
 		sendByte(v);
 		outcrc.update(v);
 		sendSUPostamble();
@@ -729,8 +768,8 @@ public:
 		startPacket(0);
 
 		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::stationId );
-		outcrc.update( (uint8_t)Config::stationId );
+		sendByte( (uint8_t)Config::HDLC::stationId );
+		outcrc.update( (uint8_t)Config::HDLC::stationId );
 		sendByte(v);
 		outcrc.update(v);
 		sendSUPostamble();
@@ -747,8 +786,8 @@ public:
 
 			startPacket(0);
 			Serial::write( HDLC_frameFlag );
-			sendByte( (uint8_t)Config::stationId );
-			outcrc.update( (uint8_t)Config::stationId );
+			sendByte( (uint8_t)Config::HDLC::stationId );
+			outcrc.update( (uint8_t)Config::HDLC::stationId );
 			sendByte(v);
 			outcrc.update(v);
 			sendSUPostamble();

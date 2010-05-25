@@ -11,11 +11,16 @@ public:
 	static void flush();
 };
 
+struct HDLCConfig: public HDLC_DefaultConfig {
+	static unsigned int const stationId = 0xff; /* All stations */
+	typedef CRC16_rfc1549 CRC;
+};
+
 struct SerProConfig {
 	static unsigned int const maxFunctions = 4;
 	static unsigned int const maxPacketSize = 128;
-	static unsigned int const stationId = 0xff; /* Only for HDLC */
 	static SerProImplementationType const implementationType = Master;
+	typedef HDLCConfig HDLC;
 };
 
 DECLARE_PPP_SERPRO( SerProConfig, SerialWrapper, SerPro);

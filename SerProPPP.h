@@ -58,7 +58,7 @@
 template<class Config, class Serial,class Timer=NoTimer>
 struct PPPprotocolImplementation
 {
-	typedef SerProHDLC<Config,Serial,PPPprotocolImplementation,Timer,CRC16_rfc1549> MyProtocol;
+	typedef SerProHDLC<Config,Serial,PPPprotocolImplementation,Timer> MyProtocol;
 	/* Forwarded types */
 	typedef typename MyProtocol::command_t command_t;
 	typedef typename MyProtocol::buffer_size_t buffer_size_t;
@@ -66,6 +66,7 @@ struct PPPprotocolImplementation
 
 	static uint8_t txseq;
     static const unsigned char myMagic[4];
+	static unsigned char ipAddress[4];
 
     static int handleLCPOption(uint8_t option, const unsigned char *buf,
 							   buffer_size_t size, int apply)
@@ -81,12 +82,52 @@ struct PPPprotocolImplementation
 		}
 	}
 
+	static int handleIPCPOption(uint8_t option, const unsigned char *buf,
+							   buffer_size_t size, int apply)
+	{
+		switch (option) {
+		case 0x03: // IP Address
+			return 0;
+		default:
+			LOG("Unknown IPCP option 0x%02x\n",option);
+			return -1;
+		}
+	}
+
+	static int handleIPCPNAKOption(uint8_t option, const unsigned char *buf,
+							   buffer_size_t size, int apply)
+	{
+		switch (option) {
+		case 0x03: // IP Address
+			/* Peer wants to set our IP address */
+			LOG("NAK SIZE %u\n",size);
+			if (size==4) {
+				memcpy(ipAddress,buf,size);
+				sendIPCPRequest();
+			}
+			return 0;
+            break;
+		default:
+			LOG("Unknown IPCP option 0x%02x\n",option);
+			return -1;
+		}
+	}
+
 	static void sendLCPReplyHeader()
 	{
 		MyProtocol::setEscapeLow(true);
 		MyProtocol::startPacket(0);
 		MyProtocol::sendPreamble(0x03);
 		MyProtocol::sendData(0xc0);
+		MyProtocol::sendData(0x21);
+	}
+
+	static void sendIPCPReplyHeader()
+	{
+		MyProtocol::setEscapeLow(true);
+		MyProtocol::startPacket(0);
+		MyProtocol::sendPreamble(0x03);
+		MyProtocol::sendData(0x80);
 		MyProtocol::sendData(0x21);
 	}
 
@@ -106,6 +147,19 @@ struct PPPprotocolImplementation
         MyProtocol::sendPostamble();
 	}
 
+	static void sendIPCPRequest()
+	{
+		sendIPCPReplyHeader();
+		MyProtocol::sendData(0x1); // Config request
+        MyProtocol::sendData(txseq++); // Seq.
+		MyProtocol::sendData(0x0);
+		MyProtocol::sendData(0x4 + 6); // 4 bytes.
+		MyProtocol::sendData(0x3); // IP-Address
+		MyProtocol::sendData(0x6); // Size
+        MyProtocol::sendData(ipAddress,sizeof(ipAddress)); // Size
+        MyProtocol::sendPostamble();
+	}
+
 	static void sendEchoReply(uint8_t seq)
 	{
 		sendLCPReplyHeader();
@@ -119,12 +173,23 @@ struct PPPprotocolImplementation
 
 	typedef int (*optionsHandler)(uint8_t option, const unsigned char *buf,buffer_size_t size, int apply);
 
-	static void processConfigRequests(uint8_t seq, const unsigned char *buf,buffer_size_t size, optionsHandler handler)
-	{
-	}
-
 	static void processLCPConfigRequest(uint8_t seq, const unsigned char *buf,
 										buffer_size_t size)
+	{
+		processConfigRequests(0xc021,seq,buf,size,&handleLCPOption);
+	}
+
+	static void processIPCPConfigRequest(uint8_t seq, const unsigned char *buf,
+										 buffer_size_t size) {
+		processConfigRequests(0x8021,seq,buf,size,&handleIPCPOption);
+	}
+
+	static void processIPCPConfigNAK(uint8_t seq, const unsigned char *buf,
+									 buffer_size_t size) {
+		processConfigRequests(0x8021,seq,buf,size,&handleIPCPNAKOption);
+	}
+
+	static void processConfigRequests(unsigned short protocol, uint8_t seq, const unsigned char *buf,buffer_size_t size, optionsHandler handler)
 	{
 		int spos=0;
 		int ack=1;
@@ -137,7 +202,7 @@ struct PPPprotocolImplementation
 				LOGN( "0x%02x ",buf[spos+2+i]);
 			}
 			LOGN("\n");
-			if (handleLCPOption(buf[spos], &buf[spos+2], buf[spos+1]-2,0)<0) {
+			if (handler(buf[spos], &buf[spos+2], buf[spos+1]-2,0)<0) {
 				ack=0;
 				naksize+=buf[spos+1];
 			} else {
@@ -151,8 +216,8 @@ struct PPPprotocolImplementation
 		MyProtocol::startPacket(0);
 		MyProtocol::sendPreamble(0x03);
 
-		MyProtocol::sendData(0xc0);
-		MyProtocol::sendData(0x21);
+		MyProtocol::sendData(protocol>>8);
+		MyProtocol::sendData(protocol&0xff);
 
 		LOG("ACK is %d\n",ack);
 		if (ack) {
@@ -178,7 +243,7 @@ struct PPPprotocolImplementation
 				LOGN( "0x%02x ",buf[spos+i]);
 			}
 			LOGN("\n");
-			if (handleLCPOption(buf[spos], &buf[spos+2], buf[spos+1]-2, ack)>=0) {
+			if (handler(buf[spos], &buf[spos+2], buf[spos+1]-2, ack)>=0) {
 				MyProtocol::sendData(&buf[spos], buf[spos+1]);
 			} else {
 				LOG("REJECTING option %d\n", buf[spos]);
@@ -187,7 +252,6 @@ struct PPPprotocolImplementation
 		}
 
 		MyProtocol::sendPostamble();
-		sendConfigRequest();
 		MyProtocol::setEscapeLow(false);
 	}
 
@@ -200,6 +264,10 @@ struct PPPprotocolImplementation
 		switch(buf[0]) {
 		case 1: // ConfigRequest
 			processLCPConfigRequest(buf[1], &buf[4],lcpsz-4);
+			sendConfigRequest();
+			break;
+		case 2: // Config ack
+			sendIPCPRequest();
 			break;
 		case 9: // Echo-request
 			/* Send back echo reply */
@@ -209,22 +277,6 @@ struct PPPprotocolImplementation
 		default:
             break;
 		}
-	}
-	static void processIPCPConfigRequest(uint8_t seq, const unsigned char *buf,
-										buffer_size_t size)
-	{
-		int spos=0;
-		while (spos<size) {
-			LOG("ConfigRequest type 0x%02x, len %02x\n",buf[spos],buf[spos+1]);
-			switch(buf[0]) {
-			case 3: // IP-address
-				/* We don't need its IP address. */
-				break;
-			default:
-                break;
-			}
-			spos+=buf[spos+1];
-		};
 	}
 	static void processIPCP(const unsigned char *buf,
 						   buffer_size_t size)
@@ -236,6 +288,11 @@ struct PPPprotocolImplementation
 		case 1: // ConfigRequest
 			processIPCPConfigRequest(buf[1], &buf[4],ipcpsz-4);
 			break;
+		case 2: // ConfigAck
+			break;
+		case 3: // ConfigNAK
+			LOG("Got NAK\n");
+			processIPCPConfigNAK(buf[1], &buf[4],ipcpsz-4);
 		default:
             break;
 		}
@@ -283,8 +340,8 @@ struct PPPprotocolImplementation
 #define DECLARE_PPP_SERPRO(config,serial,name) \
 	typedef PPPprotocolImplementation<config,serial> name; \
 	template<> uint8_t name::txseq = 1; \
-	template<> const unsigned char name::myMagic[4] =  {'A','R','D','U'};
-
+	template<> const unsigned char name::myMagic[4] =  {'A','R','D','U'}; \
+	template<> unsigned char name::ipAddress[4] =  {0,0,0,0};
 
 #define IMPLEMENT_SERPRO(name) \
 	IMPLEMENT_PROTOCOL_SerProHDLC(name)

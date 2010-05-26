@@ -113,6 +113,23 @@ static void Dumper(const unsigned char *buffer,size_t size)
 {
 }
 
+template<unsigned int>
+struct functionHandler {
+    static const int defined = 0;
+	static void handle(void);
+};
+
+template<unsigned int a>
+struct maxFunctions {
+	static const int value = functionHandler<a>::defined ?
+	a: maxFunctions<a-1>::value;
+};
+
+template<>
+struct maxFunctions<0> {
+	static const int value = 0;
+};
+
 /*
  Our main class definition.
  TODO: document
@@ -515,13 +532,6 @@ static void nohandler(void)
 {
 }
 
-template<unsigned int>
-struct functionHandler {
-    static const int defined = 0;
-	static void handle(void);
-};
-
-
 #define DECLARE_FUNCTION(x) \
 	template<> \
 	struct functionHandler<x> { \
@@ -570,5 +580,6 @@ struct functionHandler {
 	}; \
 	IMPLEMENT_PROTOCOL_##proto(name)
 
+#define SERPRO_EVENT(event) template<> void handleEvent<event>()
 
 #endif

@@ -34,6 +34,7 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 #include "Packet.h"
 #ifndef AVR
 #include <queue>
+#include <unistd.h>
 #else
 namespace std {
 	template<class T> class queue {
@@ -113,7 +114,7 @@ public:
 			sendRAW(b);
 	}
 
-	void sendData(uint8_t *buf, size_t size)
+	void sendData(const uint8_t *buf, size_t size)
 	{
 		for(;size>0;size--,buf++) {
 			sendData(*buf);
@@ -523,19 +524,19 @@ public:
 	static void startXmit()
 	{
 		if (Config::implementationType==Master) {
-		    HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
-		    if (p) {
-			// Compute control field.
-			uint8_t control;
-			control = (txQueue.peekIndex())<<1;
-			control |= 0x10; // Poll
-			control |= (rxNextSeqNum<<5);
-			p->send(control);
-			if (Timer::defined(retransmittimer)) {
-				retransmittimer = Timer::cancelTimer(retransmittimer);
+			HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
+			if (p) {
+				// Compute control field.
+				uint8_t control;
+				control = (txQueue.peekIndex())<<1;
+				control |= 0x10; // Poll
+				control |= (rxNextSeqNum<<5);
+				p->send(control);
+				if (Timer::defined(retransmittimer)) {
+					retransmittimer = Timer::cancelTimer(retransmittimer);
+				}
+				retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
 			}
-			retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
-		    }
 		}
 	}
 
@@ -644,31 +645,33 @@ public:
 
 	static void handle_supervisory()
 	{
-		LOG("Got supervisory frame\n");
-		HDLC_header *h = (HDLC_header*)pBuf;
-		supervisory_command c = (supervisory_command)(h->control.sframe.function);
-		LOG("Got supervisory frame 0x%02x\n", c);
-		switch (c) {
-		case RR:
-			LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
-			if (Config::implementationType==Master) {
+		if (Config::HDLC::implementationType!=MINIMAL) {
+			LOG("Got supervisory frame\n");
+			HDLC_header *h = (HDLC_header*)pBuf;
+			supervisory_command c = (supervisory_command)(h->control.sframe.function);
+			LOG("Got supervisory frame 0x%02x\n", c);
+			switch (c) {
+			case RR:
+				LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
+				if (Config::implementationType==Master) {
 
-				txQueue.ackUpTo(h->control.sframe.seq);
+					txQueue.ackUpTo(h->control.sframe.seq);
 
-				if (Timer::defined(retransmittimer) && txQueue.toBeAcked()==0) {
-					retransmittimer = Timer::cancelTimer(retransmittimer);
+					if (Timer::defined(retransmittimer) && txQueue.toBeAcked()==0) {
+						retransmittimer = Timer::cancelTimer(retransmittimer);
+					}
+
+					checkXmit();
 				}
-
-				checkXmit();
-			}
-			break;
-		case REJ:
-			if (Config::implementationType==Master) {
-				LOG("Got REJ for sequence %u\n",h->control.sframe.seq);
 				break;
+			case REJ:
+				if (Config::implementationType==Master) {
+					LOG("Got REJ for sequence %u\n",h->control.sframe.seq);
+					break;
+				}
+			default:
+				LOG("Unhandled supervisory frame\n");
 			}
-		default:
-			LOG("Unhandled supervisory frame\n");
 		}
 	}
 
@@ -734,7 +737,7 @@ public:
 			}
 			break;
 		default:
-            if (Config::HDLC::implementationType == BASIC ||
+			if (Config::HDLC::implementationType == BASIC ||
 				Config::HDLC::implementationType == FULL ) {
 				sendUnnumberedFrame(DM);
 				setLinkDOWN();
@@ -750,7 +753,6 @@ public:
 		v |= 0x03;
 
 		startPacket(0);
-		LOG("V: %02x c=%02x\n",v,c);
 		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::HDLC::stationId );
 		outcrc.update( (uint8_t)Config::HDLC::stationId );

@@ -1,4 +1,17 @@
+#ifdef AVR
+#define SERPROLIBRARY
+#endif
+
+#ifdef SERPROLIBRARY
+#include <serpro/crc16.h>
+#else
 #include "crc16.h"
+#endif
+#include <inttypes.h>
+
+#ifdef AVR
+#include <util/crc16.h>
+#endif
 
 void CRC16_ccitt::update(uint8_t data)
 {
@@ -30,6 +43,7 @@ void CRC16::update(uint8_t data)
 #endif
 }
 
+#if 0
 void CRC16_rfc1549::update(uint8_t data)
 {
 	uint8_t i;
@@ -42,3 +56,5 @@ void CRC16_rfc1549::update(uint8_t data)
 			crc = (crc >> 1);
 	}
 }
+
+#endif

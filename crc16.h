@@ -1,5 +1,3 @@
-#include <inttypes.h>
-
 /*
  Based on information from
  http://www.nongnu.org/avr-libc/user-manual/group__util__crc.html
@@ -8,9 +6,7 @@
 #ifndef __CRC16_H__
 #define __CRC16_H__
 
-#ifdef AVR
-#include <util/crc16.h>
-#endif
+#include <inttypes.h>
 
 struct CRC16_ccitt
 {

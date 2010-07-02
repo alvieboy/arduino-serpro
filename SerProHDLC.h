@@ -29,9 +29,17 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 #define __SERPRO_HDLC__
 
 #include <inttypes.h>
+
+#ifndef SERPROLIBRARY
 #include "crc16.h"
 #include "SerProCommon.h"
 #include "Packet.h"
+#else
+#include <serpro/crc16.h>
+#include <serpro/SerProCommon.h>
+#include <serpro/Packet.h>
+#endif
+
 #ifndef AVR
 #include <queue>
 #include <unistd.h>

@@ -23,9 +23,13 @@
 
 #include <inttypes.h>
 #include <avr/io.h>
-#include "SerPro.h"
-#include "SerProHDLC.h"
-#include "WProgram.h"
+
+#define SERPROLIBRARY
+
+#include <serpro/SerPro.h>
+#include <serpro/SerProHDLC.h>
+
+#include <WProgram.h>
 
 
 struct SerialWrapper

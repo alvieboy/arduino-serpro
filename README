@@ -1,4 +1,10 @@
-* For host installation of serpro, run "autogen.sh" and then "./configure", as usual.
 
-* For arduino installation, run "makelib.sh" which will create a "SerPro.tar.gz" file. Then extract this file into a subdirectory named
-"libraries" inside your arduino sketchbook.
+ **** Installation instructions for SerPro ****
+
+* For host installation of serpro, run "autogen.sh" and then "./configure", 
+  as usual. Then run "make" and "make install".
+
+* For arduino installation, run "makelib.sh" which will create a 
+  "SerPro.tar.gz" file. Then extract this file into a subdirectory named 
+  "libraries" inside your arduino sketchbook.
+

@@ -113,20 +113,21 @@ static void Dumper(const unsigned char *buffer,size_t size)
 {
 }
 
-template<unsigned int>
+template<class SerPro, unsigned int>
 struct functionHandler {
-    static const int defined = 0;
-	static void handle(void);
+	static const int defined = 0;
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+	static void call(const unsigned char*,buffer_size_t &size);
 };
 
-template<unsigned int a>
+template<class SerPro, unsigned int a>
 struct maxFunctions {
-	static const int value = functionHandler<a>::defined ?
-	a: maxFunctions<a-1>::value;
+	static const int value = functionHandler<SerPro, a>::defined ?
+	a: maxFunctions<SerPro,a-1>::value;
 };
 
-template<>
-struct maxFunctions<0> {
+template<class SerPro>
+struct maxFunctions<SerPro,0> {
 	static const int value = 0;
 };
 
@@ -147,15 +148,14 @@ struct protocolImplementation
 	// callback structure. One for each function we handle. We define both
 	// deserializer and function to call.
 
-	typedef  void (*func_type)(void);
-	typedef  void (*deserialize_func_type)(const unsigned char *, buffer_size_t&, func_type);
+	typedef  void (*callfunc_t)(const unsigned char *, buffer_size_t&);
 
 	struct callback {
-		deserialize_func_type deserialize;
-		func_type func;
+		callfunc_t func;
 	};
 
 	static callback const PROGMEM callbacks[Config::maxFunctions];
+	static bool isWaitingForReply, replyReady;
 
 	struct VariableBuffer{
 		const unsigned char *buffer;
@@ -184,7 +184,16 @@ struct protocolImplementation
 		if (index>=Config::maxFunctions) {
 		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
 		} else {
-		    callbacks[index].deserialize(data,pos,callbacks[index].func);
+			if (Config::implementationType == Master) {
+				if (isWaitingForReply) {
+					replyReady = true;
+                    isWaitingForReply = false;
+				} else {
+					callbacks[index].func(data,pos);
+				}
+			} else {
+				callbacks[index].func(data,pos);
+			}
 		}
 #endif
 	}
@@ -350,6 +359,16 @@ struct protocolImplementation
 
 	static inline RawBuffer getRawBuffer() {
 		return MyProtocol::getRawBuffer();
+	}
+
+	template<typename R>
+		static void wait(int index, R &target)
+	{
+		isWaitingForReply=true;
+		do {
+			Serial::waitEvents(true);
+		} while (! replyReady);
+		replyReady=false;
 	}
 };
 
@@ -527,26 +546,60 @@ struct deserializer<SerPro, void (A,B,C,D,E)> {
 	}
 };
 
-template<unsigned int>
-static void nohandler(void)
+template<class SerPro, unsigned int>
+static void nohandler(const unsigned char *b,typename SerPro::buffer_size_t &pos)
 {
 }
 
-#define DECLARE_FUNCTION(x) \
-	template<> \
-	struct functionHandler<x> { \
-    static const int defined = 1; \
-	static void handle
+template<class SerPro, unsigned int N, typename A>
+struct functionSlot {};
+
+
+
+template<class SerPro, unsigned int N, typename A>
+struct functionSlot<SerPro, N, void(A)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const unsigned char *b,buffer_size_t &pos, void (*func)(A)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		func(val_a);
+	}
+};
+
+template<class SerPro, unsigned int N, typename R, typename A>
+struct functionSlot<SerPro, N, R (A)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const unsigned char *b,buffer_size_t &pos, R (*func)(A)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		R ret = func(val_a);
+	}
+};
+
+
+//#define DECLARE_FUNCTION(x)
+
+#define EXPORT_FUNCTION(n, name) \
+	template<class SerPro> \
+	struct functionHandler<SerPro, n> { \
+	static const int defined = 1; \
+	static const struct functionSlot<SerPro,n,typeof name> slot; \
+	static void call(const unsigned char *b,typename SerPro::buffer_size_t &pos) { slot.call(b,pos,name); } \
+	}
 
 #define END_FUNCTION };
 
 #define DEFAULT_FUNCTION \
-	template<> \
-	void nohandler<1>(void)
+	template<class SerPro> \
+	void nohandler<SerPro,1>(const unsigned char *b,typename SerPro::buffer_size_t &pos)
 
 
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
+	template<> bool name::isWaitingForReply=false;\
+    template<> bool name::replyReady=false;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
@@ -556,6 +609,8 @@ static void nohandler(void)
 
 #define DECLARE_SERPRO_WITH_TIMER(config,serial,proto,timer,name) \
 	typedef protocolImplementation<config,serial,proto,timer> name; \
+	template<> bool name::isWaitingForReply=false;\
+    template<> bool name::replyReady=false;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
@@ -566,8 +621,7 @@ static void nohandler(void)
 
 #define EXPAND_DELIM ,
 #define EXPAND_VALUE(NUMBER,MAX) \
-	{ (serpro_deserializer_type)&deserializer<SerPro,typeof(functionHandler<MAX-NUMBER>::handle)>::handle, \
-	functionHandler<MAX-NUMBER>::defined ? (serpro_function_type)&functionHandler<MAX-NUMBER>::handle:(serpro_function_type)&nohandler<1> }
+	{ functionHandler<SerPro,MAX-NUMBER>::defined ? (callfunc_t)&functionHandler<SerPro,MAX-NUMBER>::call : (callfunc_t)&nohandler<SerPro,1> }
 
 #include "preprocessor_table.h"
 
@@ -581,5 +635,28 @@ static void nohandler(void)
 	IMPLEMENT_PROTOCOL_##proto(name)
 
 #define SERPRO_EVENT(event) template<> void handleEvent<event>()
+
+template<class SerPro,unsigned int N, typename A>
+struct CallSlot {
+};
+
+template<class SerPro,unsigned int N, typename A>
+struct CallSlot< SerPro, N, void (A) > {
+	void operator()(A a) { SerPro::send(N, a); }
+};
+
+template<class SerPro,unsigned int N, typename A, typename R>
+struct CallSlot<SerPro, N, R (A) > {
+	R operator()(A a) {
+		SerPro::send(N, a);
+		R ret;
+		SerPro::wait(N,ret);
+		return ret;
+	}
+};
+
+#define IMPORT_FUNCTION(index, name, type) \
+    static CallSlot<SerPro,index, type> name;
+
 
 #endif

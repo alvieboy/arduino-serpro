@@ -41,6 +41,7 @@
 #include <avr/pgmspace.h>
 #else
 #define PROGMEM
+#include <iostream>
 #endif
 
 /* Fixed-size buffer */
@@ -117,7 +118,7 @@ template<class SerPro, unsigned int>
 struct functionHandler {
 	static const int defined = 0;
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static void call(const unsigned char*,buffer_size_t &size);
+	static void call(const typename SerPro::command_t cmd, const unsigned char*,buffer_size_t &size);
 };
 
 template<class SerPro, unsigned int a>
@@ -130,248 +131,6 @@ template<class SerPro>
 struct maxFunctions<SerPro,0> {
 	static const int value = 0;
 };
-
-/*
- Our main class definition.
- TODO: document
- */
-template<class Config, class Serial,
-template <class Config, class Ser,class Implementation, class Timer> class Protocol,class Timer=NoTimer >
-struct protocolImplementation
-{
-	typedef Protocol<Config,Serial,protocolImplementation,Timer> MyProtocol;
-	/* Forwarded types */
-	typedef typename MyProtocol::command_t command_t;
-	typedef typename MyProtocol::buffer_size_t buffer_size_t;
-	typedef typename MyProtocol::RawBuffer RawBuffer;
-
-	// callback structure. One for each function we handle. We define both
-	// deserializer and function to call.
-
-	typedef  void (*callfunc_t)(const unsigned char *, buffer_size_t&);
-
-	struct callback {
-		callfunc_t func;
-	};
-
-	static callback const PROGMEM callbacks[Config::maxFunctions];
-	static bool isWaitingForReply, replyReady;
-
-	struct VariableBuffer{
-		const unsigned char *buffer;
-		unsigned int size;
-		VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {
-		}
-	};
-
-	static void connect() {
-		MyProtocol::startLink();
-	}
-
-	static inline void deferReply()
-	{
-		MyProtocol::deferReply();
-	}
-
-	static inline void callFunction(command_t index, const unsigned char *data, buffer_size_t size)
-	{
-		buffer_size_t pos = 0;
-#ifdef AVR
-		deserialize_func_type deserialize = (deserialize_func_type)pgm_read_word(&callbacks[index].deserialize);
-		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
-		deserialize(data,pos,func);
-#else
-		if (index>=Config::maxFunctions) {
-		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
-		} else {
-			if (Config::implementationType == Master) {
-				if (isWaitingForReply) {
-					replyReady = true;
-                    isWaitingForReply = false;
-				} else {
-					callbacks[index].func(data,pos);
-				}
-			} else {
-				callbacks[index].func(data,pos);
-			}
-		}
-#endif
-	}
-
-	/* Only for Master */
-	static void sendPacket(command_t command, uint8_t *payload, size_t payload_size) {
-
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->appendBuffer(payload,payload_size);
-
-		MyProtocol::queueTransmit(p);
-	}
-
-	static void sendPacket(command_t command) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		MyProtocol::queueTransmit(p);
-	}
-
-	template <class A>
-	static void sendPacket(command_t command, const A&value) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value);
-		MyProtocol::queueTransmit(p);
-	}
-
-	template <class A,class B>
-	static void sendPacket(command_t command, const A &value_a, const B &value_b) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value_a,value_b);
-		MyProtocol::queueTransmit(p);
-	}
-
-	template <class A,class B,class C>
-	static void sendPacket(command_t command, const A &value_a, const B &value_b,
-						   const C&value_c) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value_a,value_b,value_c);
-		MyProtocol::queueTransmit(p);
-	}
-
-	template <class A,class B,class C,class D>
-	static void sendPacket(command_t command, const A &value_a, const B &value_b,
-						   const C&value_c, const D &value_d) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value_a,value_b,value_c,value_d);
-		MyProtocol::queueTransmit(p);
-	}
-
-	template <class A,class B,class C,class D,class E>
-	static void sendPacket(command_t command, const A &value_a, const B &value_b,
-						   const C&value_c, const D &value_d, const E &value_e) {
-		Packet *p = MyProtocol::createPacket();
-		p->append(command);
-		p->append(value_a,value_b,value_c,value_d);
-		MyProtocol::queueTransmit(p);
-	}
-
-
-	static inline void processPacket(const unsigned char *buf,
-									 buffer_size_t size)
-	{
-		buffer_size_t sz = 0; // TODO - put packet size here.
-
-		// Dump facility
-		Dumper<1>(buf,size);
-
-		callFunction(buf[0], buf+1, sz-1);
-	}
-
-	static inline void processData(uint8_t bIn)
-	{
-		MyProtocol::processData(bIn);
-	}
-
-	static inline void send(command_t command) {
-		MyProtocol::startPacket(sizeof(command));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		MyProtocol::sendPostamble();
-	}
-
-	template<typename A>
-		static void send(command_t command, A value) {
-			MyProtocol::startPacket(sizeof(A)+sizeof(command));
-			MyProtocol::sendPreamble();
-			MyProtocol::sendData(command);
-			serialize<MyProtocol>(value);
-			MyProtocol::sendPostamble();
-		};
-
-	template<typename A,typename B>
-	static void send(command_t command, const A value_a, const B value_b) {
-		MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		MyProtocol::sendPostamble();
-	}
-
-	template<typename A,typename B,typename C>
-	static void send(command_t command, const A value_a, const B value_b, const C value_c) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		MyProtocol::sendPostamble();
-	}
-
-	template<typename A,typename B,typename C,typename D>
-	static void send(command_t command, const A value_a, const B value_b,
-					 const C value_c,const D value_d) {
-		buffer_size_t length = 0;
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		MyProtocol::sendPostamble();
-	}
-
-	template<typename A,typename B,typename C,typename D,typename E>
-	static void send(command_t command, const A &value_a, const B &value_b,
-					 const C &value_c,const D &value_d,
-					 const E &value_e) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		serialize<MyProtocol>(value_e);
-		MyProtocol::sendPostamble();
-	}
-
-	template<typename A,typename B,typename C,typename D,typename E,typename F>
-	static void send(command_t command, const A value_a,
-					 const B value_b, const C value_c,
-					 const D value_d, const E value_e,
-					 const F value_f) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		serialize<MyProtocol>(value_e);
-		serialize<MyProtocol>(value_f);
-		MyProtocol::sendPostamble();
-	}
-
-	static inline RawBuffer getRawBuffer() {
-		return MyProtocol::getRawBuffer();
-	}
-
-	template<typename R>
-		static void wait(int index, R &target)
-	{
-		isWaitingForReply=true;
-		do {
-			Serial::waitEvents(true);
-		} while (! replyReady);
-		replyReady=false;
-	}
-};
-
 
 template<class SerPro,typename A>
 struct deserialize {
@@ -546,8 +305,261 @@ struct deserializer<SerPro, void (A,B,C,D,E)> {
 	}
 };
 
+
+/*
+ Our main class definition.
+ TODO: document
+ */
+template<class Config, class Serial,
+template <class Config, class Ser,class Implementation, class Timer> class Protocol,class Timer=NoTimer >
+struct protocolImplementation
+{
+	typedef Protocol<Config,Serial,protocolImplementation,Timer> MyProtocol;
+	/* Forwarded types */
+	typedef typename MyProtocol::command_t command_t;
+	typedef typename MyProtocol::buffer_size_t buffer_size_t;
+	typedef typename MyProtocol::RawBuffer RawBuffer;
+
+	// callback structure. One for each function we handle. We define both
+	// deserializer and function to call.
+
+	typedef  void (*callfunc_t)(const command_t cmd, const unsigned char *, buffer_size_t&);
+
+	struct callback {
+		callfunc_t func;
+	};
+
+	static callback const PROGMEM callbacks[Config::maxFunctions];
+	static bool isWaitingForReply, replyReady;
+	static command_t expectedReplyCommand;
+	static const unsigned char *replyBuf;
+
+	struct VariableBuffer{
+		const unsigned char *buffer;
+		unsigned int size;
+		VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {
+		}
+	};
+
+	static void connect() {
+		MyProtocol::startLink();
+	}
+
+	static inline void deferReply()
+	{
+		MyProtocol::deferReply();
+	}
+
+	static inline void callFunction(command_t index, const unsigned char *data, buffer_size_t size)
+	{
+		buffer_size_t pos = 0;
+#ifdef AVR
+		deserialize_func_type deserialize = (deserialize_func_type)pgm_read_word(&callbacks[index].deserialize);
+		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
+		deserialize(data,pos,func);
+#else
+		if (index>=Config::maxFunctions) {
+		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
+		} else {
+			if (Config::implementationType == Master) {
+			  //  std::cerr<<"Wait reply "<<isWaitingForReply<<" expect "<<(int)expectedReplyCommand<<std::endl;
+			   // std::cerr<<"Command is "<<(int)index<<std::endl;
+				if (isWaitingForReply && index == expectedReplyCommand) {
+					replyReady = true;
+					replyBuf = data;
+					isWaitingForReply = false;
+				} else {
+					callbacks[index].func(index,data,pos);
+				}
+			} else {
+				callbacks[index].func(index,data,pos);
+			}
+		}
+#endif
+	}
+
+	/* Only for Master */
+	static void sendPacket(command_t command, uint8_t *payload, size_t payload_size) {
+
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->appendBuffer(payload,payload_size);
+
+		MyProtocol::queueTransmit(p);
+	}
+
+	static void sendPacket(command_t command) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A>
+	static void sendPacket(command_t command, const A&value) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B>
+	static void sendPacket(command_t command, const A &value_a, const B &value_b) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value_a,value_b);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C>
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
+						   const C&value_c) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value_a,value_b,value_c);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C,class D>
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
+						   const C&value_c, const D &value_d) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value_a,value_b,value_c,value_d);
+		MyProtocol::queueTransmit(p);
+	}
+
+	template <class A,class B,class C,class D,class E>
+	static void sendPacket(command_t command, const A &value_a, const B &value_b,
+						   const C&value_c, const D &value_d, const E &value_e) {
+		Packet *p = MyProtocol::createPacket();
+		p->append(command);
+		p->append(value_a,value_b,value_c,value_d);
+		MyProtocol::queueTransmit(p);
+	}
+
+
+	static inline void processPacket(const unsigned char *buf,
+									 buffer_size_t size)
+	{
+		buffer_size_t sz = 0; // TODO - put packet size here.
+
+		// Dump facility
+		Dumper<1>(buf,size);
+
+		callFunction(buf[0], buf+1, sz-1);
+	}
+
+	static inline void processData(uint8_t bIn)
+	{
+		MyProtocol::processData(bIn);
+	}
+
+	static inline void send(command_t command) {
+		MyProtocol::startPacket(sizeof(command));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		MyProtocol::sendPostamble();
+	}
+
+	template<typename A>
+		static void send(command_t command, A value) {
+			MyProtocol::startPacket(sizeof(A)+sizeof(command));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value);
+			MyProtocol::sendPostamble();
+		};
+
+	template<typename A,typename B>
+	static void send(command_t command, const A value_a, const B value_b) {
+		MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		serialize<MyProtocol>(value_a);
+		serialize<MyProtocol>(value_b);
+		MyProtocol::sendPostamble();
+	}
+
+	template<typename A,typename B,typename C>
+	static void send(command_t command, const A value_a, const B value_b, const C value_c) {
+		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		serialize<MyProtocol>(value_a);
+		serialize<MyProtocol>(value_b);
+		serialize<MyProtocol>(value_c);
+		MyProtocol::sendPostamble();
+	}
+
+	template<typename A,typename B,typename C,typename D>
+	static void send(command_t command, const A value_a, const B value_b,
+					 const C value_c,const D value_d) {
+		buffer_size_t length = 0;
+		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		serialize<MyProtocol>(value_a);
+		serialize<MyProtocol>(value_b);
+		serialize<MyProtocol>(value_c);
+		serialize<MyProtocol>(value_d);
+		MyProtocol::sendPostamble();
+	}
+
+	template<typename A,typename B,typename C,typename D,typename E>
+	static void send(command_t command, const A &value_a, const B &value_b,
+					 const C &value_c,const D &value_d,
+					 const E &value_e) {
+		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		serialize<MyProtocol>(value_a);
+		serialize<MyProtocol>(value_b);
+		serialize<MyProtocol>(value_c);
+		serialize<MyProtocol>(value_d);
+		serialize<MyProtocol>(value_e);
+		MyProtocol::sendPostamble();
+	}
+
+	template<typename A,typename B,typename C,typename D,typename E,typename F>
+	static void send(command_t command, const A value_a,
+					 const B value_b, const C value_c,
+					 const D value_d, const E value_e,
+					 const F value_f) {
+		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
+		MyProtocol::sendPreamble();
+		MyProtocol::sendData(command);
+		serialize<MyProtocol>(value_a);
+		serialize<MyProtocol>(value_b);
+		serialize<MyProtocol>(value_c);
+		serialize<MyProtocol>(value_d);
+		serialize<MyProtocol>(value_e);
+		serialize<MyProtocol>(value_f);
+		MyProtocol::sendPostamble();
+	}
+
+	static inline RawBuffer getRawBuffer() {
+		return MyProtocol::getRawBuffer();
+	}
+
+	template<typename R> static void wait(command_t index, R &target)
+	{
+		expectedReplyCommand = index;
+		isWaitingForReply=true;
+		do {
+			Serial::waitEvents(true);
+		} while (! replyReady);
+		replyReady=false;
+		//std::cerr<<"Got expected reply"<<std::endl;
+		// Process reply.
+		buffer_size_t pos=0;
+		target = deserialize<protocolImplementation,R>::deser(replyBuf,pos);
+	}
+};
+
+
+
 template<class SerPro, unsigned int>
-static void nohandler(const unsigned char *b,typename SerPro::buffer_size_t &pos)
+static void nohandler(const typename SerPro::command_t cmd, const unsigned char *b,typename SerPro::buffer_size_t &pos)
 {
 }
 
@@ -561,7 +573,7 @@ struct functionSlot<SerPro, N, void(A)> {
 
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 
-	static void call(const unsigned char *b,buffer_size_t &pos, void (*func)(A)) {
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, void (*func)(A)) {
 		A val_a=deserialize<SerPro,A>::deser(b,pos);
 		func(val_a);
 	}
@@ -572,9 +584,23 @@ struct functionSlot<SerPro, N, R (A)> {
 
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 
-	static void call(const unsigned char *b,buffer_size_t &pos, R (*func)(A)) {
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, R (*func)(A)) {
 		A val_a=deserialize<SerPro,A>::deser(b,pos);
 		R ret = func(val_a);
+		SerPro::send(cmd,ret);
+	}
+};
+
+template<class SerPro, unsigned int N, typename R, typename A, typename B>
+struct functionSlot<SerPro, N, R (A,B)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, R (*func)(A,B)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		B val_b=deserialize<SerPro,B>::deser(b,pos);
+		R ret = func(val_a,val_b);
+		SerPro::send(cmd,ret);
 	}
 };
 
@@ -586,7 +612,7 @@ struct functionSlot<SerPro, N, R (A)> {
 	struct functionHandler<SerPro, n> { \
 	static const int defined = 1; \
 	static const struct functionSlot<SerPro,n,typeof name> slot; \
-	static void call(const unsigned char *b,typename SerPro::buffer_size_t &pos) { slot.call(b,pos,name); } \
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,typename SerPro::buffer_size_t &pos) { slot.call(cmd,b,pos,name); } \
 	}
 
 #define END_FUNCTION };
@@ -599,7 +625,9 @@ struct functionSlot<SerPro, N, R (A)> {
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
 	template<> bool name::isWaitingForReply=false;\
-    template<> bool name::replyReady=false;\
+	template<> bool name::replyReady=false;\
+	template<> const unsigned char *name::replyBuf=NULL;\
+	template<> name::command_t name::expectedReplyCommand;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
@@ -610,7 +638,9 @@ struct functionSlot<SerPro, N, R (A)> {
 #define DECLARE_SERPRO_WITH_TIMER(config,serial,proto,timer,name) \
 	typedef protocolImplementation<config,serial,proto,timer> name; \
 	template<> bool name::isWaitingForReply=false;\
-    template<> bool name::replyReady=false;\
+	template<> bool name::replyReady=false;\
+	template<> const unsigned char *name::replyBuf=NULL;\
+	template<> name::command_t name::expectedReplyCommand=0;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
@@ -649,6 +679,16 @@ template<class SerPro,unsigned int N, typename A, typename R>
 struct CallSlot<SerPro, N, R (A) > {
 	R operator()(A a) {
 		SerPro::send(N, a);
+		R ret;
+		SerPro::wait(N,ret);
+		return ret;
+	}
+};
+
+template<class SerPro,unsigned int N, typename A, typename R, typename B>
+struct CallSlot<SerPro, N, R (A,B) > {
+	R operator()(A a, B b) {
+		SerPro::send(N, a, b);
 		R ret;
 		SerPro::wait(N,ret);
 		return ret;

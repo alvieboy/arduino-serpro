@@ -57,8 +57,8 @@ namespace std {
 
 #ifndef AVR
 #include <stdio.h>
-#define LOG(m...)  fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);
-#define LOGN(m...) fprintf(stderr,m);
+#define LOG(m...)   /* fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);*/
+#define LOGN(m...)  /* fprintf(stderr,m);*/
 #else
 #define LOG(m...)
 #define LOGN(m...)
@@ -710,11 +710,11 @@ public:
 				Config::HDLC::implementationType == FULL ) {
 
 				sendUnnumberedFrame(UA);
-				setLinkUP();
 				// Reset tx/rx sequences
 				txSeqNum=0;
 				rxNextSeqNum=0;
 				LOG("Link up, NRM\n");
+				setLinkUP();
 			}
 			break;
 		case DM:
@@ -728,7 +728,6 @@ public:
 			if (Config::HDLC::implementationType == BASIC ||
 				Config::HDLC::implementationType == FULL ) {
 
-				setLinkUP();
 				// Reset tx/rx sequences
 				txSeqNum=0;
 				rxNextSeqNum=0;
@@ -737,6 +736,7 @@ public:
 					if (Timer::defined(linktimer))
 						linktimer = Timer::cancelTimer(linktimer);
 				}
+				setLinkUP();
 			}
 			break;
 		case UI:

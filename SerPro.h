@@ -354,9 +354,8 @@ struct protocolImplementation
 	{
 		buffer_size_t pos = 0;
 #ifdef AVR
-		deserialize_func_type deserialize = (deserialize_func_type)pgm_read_word(&callbacks[index].deserialize);
-		func_type func = (func_type)pgm_read_word(&callbacks[index].func);
-		deserialize(data,pos,func);
+		callfunc_t func = (callfunc_t)pgm_read_word(&callbacks[index].func);
+		func(index,data,pos);
 #else
 		if (index>=Config::maxFunctions) {
 		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
@@ -604,6 +603,18 @@ struct functionSlot<SerPro, N, R (A,B)> {
 	}
 };
 
+template<class SerPro, unsigned int N, typename A, typename B>
+struct functionSlot<SerPro, N, void (A,B)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, void (*func)(A,B)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		B val_b=deserialize<SerPro,B>::deser(b,pos);
+		func(val_a,val_b);
+	}
+};
+
 
 //#define DECLARE_FUNCTION(x)
 
@@ -692,6 +703,13 @@ struct CallSlot<SerPro, N, R (A,B) > {
 		R ret;
 		SerPro::wait(N,ret);
 		return ret;
+	}
+};
+
+template<class SerPro,unsigned int N, typename A, typename B>
+struct CallSlot<SerPro, N, void (A,B) > {
+	void operator()(A a, B b) {
+		SerPro::send(N, a, b);
 	}
 };
 

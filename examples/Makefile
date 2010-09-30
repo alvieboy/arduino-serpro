@@ -4,12 +4,15 @@ LDFLAGS=
 
 OBJECTS=crc16.o SerPro-glib.o
 
-all: example1-slave example1-master
+all: example1-slave example1-master example-arduino
 
 example1-slave: example1-slave.o $(OBJECTS)
 	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS)
 
 example1-master: example1-master.o $(OBJECTS)
+	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS) -lutil
+                          
+example-arduino: example-arduino.o $(OBJECTS)
 	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS) -lutil
                           
 SerPro-glib.o: ../SerPro-glib.cpp

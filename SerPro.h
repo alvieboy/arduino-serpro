@@ -110,7 +110,8 @@ template<typename MyProtocol>
 static inline void serialize(const VariableBuffer &buf) {
 	uint32_t reordered = cpu_to_be32(buf.size);
 	MyProtocol::sendData((unsigned char*)&reordered,sizeof(uint32_t));
-	MyProtocol::sendData(buf.buffer, buf.size);
+	if(buf.size>0)
+		MyProtocol::sendData(buf.buffer, buf.size);
 }
 
 /* This is pretty much unsafe... */

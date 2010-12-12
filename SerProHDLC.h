@@ -1013,7 +1013,7 @@ public:
 	template<> bool SerPro::MyProtocol::unEscaping = false; \
 	template<> bool SerPro::MyProtocol::forceEscapingLow = false; \
 	template<> bool SerPro::MyProtocol::inPacket = false; \
-	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
+	template<> unsigned char SerPro::MyProtocol::pBuf[]={}; \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::retransmittimer=timer_t(); \
     HDLC_QUEUES

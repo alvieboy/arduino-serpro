@@ -693,6 +693,34 @@ struct functionSlot<SerPro, N, void (A,B)> {
 	}
 };
 
+template<class SerPro, unsigned int N, typename R, typename A, typename B,typename C>
+struct functionSlot<SerPro, N, R (A,B,C)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, R (*func)(A,B,C)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		B val_b=deserialize<SerPro,B>::deser(b,pos);
+		C val_c=deserialize<SerPro,C>::deser(b,pos);
+		R ret = func(val_a,val_b,val_c);
+		SerPro::send(cmd,ret);
+	}
+};
+
+template<class SerPro, unsigned int N, typename A, typename B,typename C>
+struct functionSlot<SerPro, N, void (A,B,C)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, void (*func)(A,B,C)) {
+		A val_a=deserialize<SerPro,A>::deser(b,pos);
+		B val_b=deserialize<SerPro,B>::deser(b,pos);
+		C val_c=deserialize<SerPro,C>::deser(b,pos);
+		func(val_a,val_b,val_c);
+		SerPro::send(cmd);
+	}
+};
+
 
 //#define DECLARE_FUNCTION(x)
 
@@ -809,6 +837,24 @@ template<class SerPro,unsigned int N, typename A, typename B>
 struct CallSlot<SerPro, N, void (A,B) > {
 	void operator()(A a, B b) {
 		SerPro::send(N, a, b);
+		SerPro::wait(N);
+	}
+};
+
+template<class SerPro,unsigned int N, typename A, typename R, typename B,typename C>
+struct CallSlot<SerPro, N, R (A,B,C) > {
+	R operator()(A a, B b, C c) {
+		SerPro::send(N, a, b, c);
+		R ret;
+		SerPro::wait(N,ret);
+		return ret;
+	}
+};
+
+template<class SerPro,unsigned int N, typename A, typename B, typename C>
+struct CallSlot<SerPro, N, void (A,B,C) > {
+	void operator()(A a, B b, C c) {
+		SerPro::send(N, a, b, c);
 		SerPro::wait(N);
 	}
 };

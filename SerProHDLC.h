@@ -40,25 +40,31 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 #include <serpro/Packet.h>
 #endif
 
-#ifndef AVR
+#ifndef SERPRO_EMBEDDED
+
+#include <bits/endian.h>
 #include <queue>
 #include <unistd.h>
+
 #else
-namespace std {
-	template<class T> class queue {
-	public:
-		size_t size() const;
-		void pop();
-		void push(const T&);
-		T &front() const;
-	};
-};
+
+#define __LITTLE_ENDIAN 0
+#define __BIG_ENDIAN 1
+
+
+#if defined(AVR)
+#define __BYTE_ORDER __LITTLE_ENDIAN
+#endif
+#if defined(ZPU)
+#define __BYTE_ORDER __BIG_ENDIAN
 #endif
 
-#ifndef AVR
+#endif
+
+#ifndef SERPRO_EMBEDDED
 #include <stdio.h>
-#define LOG(m...)   /* fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);*/
-#define LOGN(m...)  /* fprintf(stderr,m);*/
+#define LOG(m...)   /*fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);*/
+#define LOGN(m...)  /*fprintf(stderr,m);*/
 #else
 #define LOG(m...)
 #define LOGN(m...)
@@ -93,6 +99,7 @@ template<>
 
 
 /* Packet definition  - not to be used on Arduino */
+#ifndef SERPRO_EMBEDDED
 
 template<class Config, class Serial>
 class HDLCPacket: public Packet
@@ -174,8 +181,8 @@ public:
 
 	void sendPostamble() {
 		uint16_t crc = outcrc.get();
-		sendByte(crc & 0xff);
 		sendByte((crc>>8)&0xff);
+		sendByte(crc & 0xff);
 		sendRAW(HDLC_frameFlag);
 		Serial::flush();
 	}
@@ -286,6 +293,8 @@ private:
 	uint8_t tx,ack;
 };
 
+#endif
+
 typedef enum {
 	LINK_UP,
 	LINK_DOWN,
@@ -325,9 +334,12 @@ public:
 
 	typedef uint8_t command_t;
 
+
+#ifndef SERPRO_EMBEDDED
 	typedef HDLCPacket<Config,Serial> MyPacket;
 	static PacketQueue txQueue, rxQueue;
 	static std::queue<Packet*> inputQueue;
+#endif
 
 	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
 	//typedef uint16_t buffer_size_t;
@@ -362,29 +374,63 @@ public:
 		uint8_t address;
 		union {
 			struct {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 				uint8_t flag: 1;   /* Always zero */
 				uint8_t txseq: 3;  /* TX sequence number */
 				uint8_t poll: 1;   /* poll/final */
 				uint8_t rxseq: 3;  /* RX sequence number */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+				uint8_t rxseq: 3;  /* RX sequence number */
+				uint8_t poll: 1;   /* poll/final */
+				uint8_t txseq: 3;  /* TX sequence number */
+				uint8_t flag: 1;   /* Always zero */
+#else
+# error "No endianess defined."
+#endif
 			} iframe;
 
 			struct {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 				uint8_t flag: 2;   /* '1''0' for S-frame */
 				uint8_t function: 2; /* Supervisory function */
 				uint8_t poll: 1;     /* Poll/Final */
 				uint8_t seq: 3;    /* Sequence number */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+				uint8_t seq: 3;    /* Sequence number */
+				uint8_t poll: 1;     /* Poll/Final */
+				uint8_t function: 2; /* Supervisory function */
+				uint8_t flag: 2;   /* '1''0' for S-frame */
+#else
+# error "No endianess defined."
+#endif
 			} sframe;
 
 			struct {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 				uint8_t flag: 2;   /* '1''1' for U-Frame */
 				uint8_t modifier: 2; /* Modifier bits */
 				uint8_t poll: 1;   /* Poll/Final */
 				uint8_t function: 3; /* Function */
+#elif __BYTE_ORDER == __BIG_ENDIAN
+				uint8_t function: 3; /* Function */
+				uint8_t poll: 1;   /* Poll/Final */
+				uint8_t modifier: 2; /* Modifier bits */
+				uint8_t flag: 2;   /* '1''1' for U-Frame */
+#else
+# error "No endianess defined."
+#endif
 			} uframe;
 
 			struct {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 				uint8_t flag: 2;  /* LSB-MSB:  0X: I-frame, 10: S-Frame, 11: U-Frame */
 				uint8_t unused: 6;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+				uint8_t unused: 6;
+				uint8_t flag: 2;  /* LSB-MSB:  0X: I-frame, 10: S-Frame, 11: U-Frame */
+#else
+# error "No endianess defined."
+#endif
 			} frame_type;
 			uint8_t value;
 		} control;
@@ -531,6 +577,7 @@ public:
 
 	static void startXmit()
 	{
+#ifndef SERPRO_EMBEDDED
 		if (Config::implementationType==Master) {
 			HDLCPacket<Config,Serial> *p = static_cast<HDLCPacket<Config,Serial>*>(txQueue.peek());
 			if (p) {
@@ -546,10 +593,12 @@ public:
 				retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
 			}
 		}
+#endif
 	}
 
 	static void checkXmit()
 	{
+#ifndef SERPRO_EMBEDDED
 		if (Config::implementationType==Master) {
 			LOG("Checking Xmit queue...\n");
 			if (txQueue.toBeAcked()==0 && inputQueue.size()>0) {
@@ -559,8 +608,10 @@ public:
 				queueTransmit(p);
 			}
 		}
+#endif
 	}
 
+#ifndef SERPRO_EMBEDDED
 	static int queueTransmit(Packet *p)
 	{
 		if (Config::implementationType==Master) {
@@ -574,6 +625,7 @@ public:
 		}
 		return 0;
 	}
+#endif
 
 	static void sendPreamble()
 	{
@@ -595,8 +647,8 @@ public:
 	static void sendPostamble()
 	{
 		CRC16_ccitt::crc_t crc = outcrc.get();
-		sendByte(crc & 0xff);
 		sendByte(crc>>8);
+		sendByte(crc & 0xff);
 		Serial::write(HDLC_frameFlag);
 		Serial::flush();
 		handleEvent<END_XMIT>();
@@ -608,8 +660,8 @@ public:
 	static void sendSUPostamble()
 	{
 		CRC16_ccitt::crc_t crc = outcrc.get();
-		sendByte(crc & 0xff);
 		sendByte(crc>>8);
+		sendByte(crc & 0xff);
 		Serial::write(HDLC_frameFlag);
 		Serial::flush();
 		handleEvent<END_XMIT>();
@@ -645,11 +697,12 @@ public:
 	{
 		linkFlags |= LINK_FLAG_PACKETSENT;
 	}
-
+#ifndef SERPRO_EMBEDDED
 	static Packet *createPacket()
 	{
 		return new MyPacket();
 	}
+#endif
 
 	static void handle_supervisory()
 	{
@@ -661,6 +714,7 @@ public:
 			switch (c) {
 			case RR:
 				LOG("RR, ack'ed 0x%02x\n", h->control.sframe.seq);
+#ifndef SERPRO_EMBEDDED
 				if (Config::implementationType==Master) {
 
 					txQueue.ackUpTo(h->control.sframe.seq);
@@ -671,6 +725,7 @@ public:
 
 					checkXmit();
 				}
+#endif
 				break;
 			case REJ:
 				if (Config::implementationType==Master) {
@@ -806,11 +861,13 @@ public:
 
 	static void handleInformationFrame(const HDLC_header *h)
 	{
+#ifndef SERPRO_EMBEDDED
 		if (Config::implementationType==Master) {
 			/* Ack frames */
 			txQueue.ackUpTo(h->control.iframe.rxseq);
 			checkXmit();
 		}
+#endif
 	}
 
 	static void preProcessPacket()
@@ -831,7 +888,9 @@ public:
 		for (i=0;i<pBufPtr-2;i++) {
 			incrc.update(pBuf[i]);
 		}
-		crc_t pcrc = *((crc_t*)&pBuf[pBufPtr-2]);
+		crc_t pcrc = pBuf[i++];
+		pcrc<<=8;
+		pcrc|=pBuf[i];
 		if (pcrc!=incrc.get()) {
 			/* CRC error */
 			LOG("CRC ERROR, expected 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
@@ -933,6 +992,15 @@ public:
 	}
 };
 
+#ifndef SERPRO_EMBEDDED
+#define HDLC_QUEUES \
+	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
+	template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue(); \
+	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();
+#else
+#define HDLC_QUEUES
+#endif
+
 #define IMPLEMENT_PROTOCOL_SerProHDLC(SerPro) \
 	template<> SerPro::MyProtocol::buffer_size_t SerPro::MyProtocol::pBufPtr=0; \
 	template<> uint8_t SerPro::MyProtocol::txSeqNum=0; \
@@ -948,8 +1016,5 @@ public:
 	template<> unsigned char SerPro::MyProtocol::pBuf[]={0}; \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::retransmittimer=timer_t(); \
-	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
-	template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue(); \
-	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();
-
+    HDLC_QUEUES
 #endif

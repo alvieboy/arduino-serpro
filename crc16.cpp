@@ -1,4 +1,4 @@
-#ifdef AVR
+#if defined(AVR) || defined(ZPU)
 #define SERPROLIBRARY
 #endif
 

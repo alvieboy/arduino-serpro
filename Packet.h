@@ -23,6 +23,8 @@
 
 #include <inttypes.h>
 
+#ifndef SERPRO_EMBEDDED
+
 class Packet
 {
 public:
@@ -74,5 +76,8 @@ public:
 
 	virtual ~Packet() {}
 };
+
+#endif
+
 
 #endif

@@ -21,7 +21,7 @@
 #ifndef __SERPRO_H__
 #define __SERPRO_H__
 
-#include <stdint.h>
+#include <inttypes.h>
 #include <string.h> // For strlen
 #include "Packet.h"
 #include "SerProCommon.h"
@@ -41,7 +41,10 @@
 #include <avr/pgmspace.h>
 #else
 #define PROGMEM
+#ifndef ZPU
 #include <iostream>
+#endif
+
 #endif
 
 /* Fixed-size buffer */
@@ -55,9 +58,13 @@ struct FixedBuffer {
 
 struct VariableBuffer{
 	const unsigned char *buffer;
-	unsigned int size;
-	VariableBuffer(const unsigned char *b,int s): buffer(b),size(s) {
+	uint32_t size;
+	VariableBuffer(const unsigned char *b,uint32_t s): buffer(b),size(s) {
 	}
+	VariableBuffer(): buffer(NULL),size(0) {}
+	/*VariableBuffer &operator=(const VariableBuffer&s) {
+
+	} */
 };
 
 template<typename MyProtocol, class A>
@@ -72,12 +79,14 @@ static inline void serialize(uint8_t value) {
 
 template<typename MyProtocol>
 static inline void serialize(const uint16_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(uint16_t));
+	uint16_t reordered = cpu_to_be16(value);
+	MyProtocol::sendData((unsigned char*)&reordered,sizeof(uint16_t));
 }
 
 template<typename MyProtocol>
 static inline void serialize(const uint32_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(uint32_t));
+	uint32_t reordered = cpu_to_be32(value);
+	MyProtocol::sendData((unsigned char*)&reordered,sizeof(uint32_t));
 }
 
 template<typename MyProtocol>
@@ -87,16 +96,20 @@ static inline void serialize(int8_t value) {
 
 template<typename MyProtocol>
 static inline void serialize(const int16_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(int16_t));
+	uint16_t reordered = cpu_to_be16(value);
+	MyProtocol::sendData((unsigned char*)&reordered,sizeof(int16_t));
 }
 
 template<typename MyProtocol>
 static inline void serialize(const int32_t &value) {
-	MyProtocol::sendData((unsigned char*)&value,sizeof(int32_t));
+	uint32_t reordered = cpu_to_be32(value);
+	MyProtocol::sendData((unsigned char*)&reordered,sizeof(int32_t));
 }
 
 template<typename MyProtocol>
 static inline void serialize(const VariableBuffer &buf) {
+	uint32_t reordered = cpu_to_be32(buf.size);
+	MyProtocol::sendData((unsigned char*)&reordered,sizeof(uint32_t));
 	MyProtocol::sendData(buf.buffer, buf.size);
 }
 
@@ -166,8 +179,9 @@ template<class SerPro>
 struct deserialize<SerPro,uint16_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static inline uint16_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint16_t value = *(uint16_t*)&b[pos];
-		pos+=sizeof(uint16_t);
+		uint16_t value = b[pos++];
+		value<<=8;
+		value+=b[pos++];
 		return value;
 	}
 };
@@ -176,8 +190,9 @@ template<class SerPro>
 struct deserialize<SerPro,int16_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static inline int16_t deser(const unsigned char *b, buffer_size_t &pos) {
-		int8_t value = *(int8_t*)&b[pos];
-		pos+=sizeof(int16_t);
+		uint16_t value = b[pos++];
+		value<<=8;
+		value+=b[pos++];
 		return value;
 	}
 };
@@ -186,8 +201,13 @@ template<class SerPro>
 struct deserialize<SerPro,int32_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static inline int32_t deser(const unsigned char *b, buffer_size_t &pos) {
-		int value = *(int*)&b[pos];
-		pos+=sizeof(int32_t);
+		uint32_t value = b[pos++];
+		value<<=8;
+		value+=b[pos++];
+		value<<=8;
+		value+=b[pos++];
+		value<<=8;
+		value+=b[pos++];
 		return value;
 	}
 };
@@ -196,8 +216,13 @@ template<class SerPro>
 struct deserialize<SerPro,uint32_t> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
 	static inline uint32_t deser(const unsigned char *b, buffer_size_t &pos) {
-		uint32_t value = *(int*)&b[pos];
-		pos+=sizeof(uint32_t);
+		uint32_t value = b[pos++];
+		value<<=8;
+		value+=b[pos++];
+		value<<=8;
+		value+=b[pos++];
+		value<<=8;
+		value+=b[pos++];
 		return value;
 	}
 };
@@ -232,6 +257,26 @@ struct deserialize < SerPro, FixedBuffer<BUFSIZE> > {
 		buf.buffer=(unsigned char*)&b[pos];
 		pos+=BUFSIZE;
 		return buf;
+	}
+};
+
+template<class SerPro>
+struct deserialize < SerPro, VariableBuffer > {
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+	static VariableBuffer deser(const unsigned char *b, buffer_size_t &pos) {
+
+		uint32_t size = b[pos++];
+		size<<=8;
+		size+=b[pos++];
+		size<<=8;
+		size+=b[pos++];
+		size<<=8;
+		size+=b[pos++];
+
+		const unsigned char *p;
+		p=&b[pos];
+		pos+=size;
+		return VariableBuffer(p,size);
 	}
 };
 
@@ -553,6 +598,16 @@ struct protocolImplementation
 		buffer_size_t pos=0;
 		target = deserialize<protocolImplementation,R>::deser(replyBuf,pos);
 	}
+
+	static void wait(command_t index)
+	{
+		expectedReplyCommand = index;
+		isWaitingForReply=true;
+		do {
+			Serial::waitEvents(true);
+		} while (! replyReady);
+		replyReady=false;
+	}
 };
 
 
@@ -566,6 +621,16 @@ template<class SerPro, unsigned int N, typename A>
 struct functionSlot {};
 
 
+template<class SerPro, unsigned int N>
+struct functionSlot<SerPro, N, void(void)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, void (*func)(void)) {
+		func();
+		SerPro::send(cmd);
+	}
+};
 
 template<class SerPro, unsigned int N, typename A>
 struct functionSlot<SerPro, N, void(A)> {
@@ -575,6 +640,7 @@ struct functionSlot<SerPro, N, void(A)> {
 	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, void (*func)(A)) {
 		A val_a=deserialize<SerPro,A>::deser(b,pos);
 		func(val_a);
+		SerPro::send(cmd);
 	}
 };
 
@@ -586,6 +652,17 @@ struct functionSlot<SerPro, N, R (A)> {
 	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, R (*func)(A)) {
 		A val_a=deserialize<SerPro,A>::deser(b,pos);
 		R ret = func(val_a);
+		SerPro::send(cmd,ret);
+	}
+};
+
+template<class SerPro, unsigned int N, typename R>
+struct functionSlot<SerPro, N, R (void)> {
+
+	typedef typename SerPro::buffer_size_t buffer_size_t;
+
+	static void call(const typename SerPro::command_t cmd, const unsigned char *b,buffer_size_t &pos, R (*func)(void)) {
+		R ret = func();
 		SerPro::send(cmd,ret);
 	}
 };
@@ -612,6 +689,7 @@ struct functionSlot<SerPro, N, void (A,B)> {
 		A val_a=deserialize<SerPro,A>::deser(b,pos);
 		B val_b=deserialize<SerPro,B>::deser(b,pos);
 		func(val_a,val_b);
+		SerPro::send(cmd);
 	}
 };
 
@@ -638,7 +716,7 @@ struct functionSlot<SerPro, N, void (A,B)> {
 	template<> bool name::isWaitingForReply=false;\
 	template<> bool name::replyReady=false;\
 	template<> const unsigned char *name::replyBuf=NULL;\
-	template<> name::command_t name::expectedReplyCommand;\
+	template<> name::command_t name::expectedReplyCommand=0;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
@@ -683,7 +761,28 @@ struct CallSlot {
 
 template<class SerPro,unsigned int N, typename A>
 struct CallSlot< SerPro, N, void (A) > {
-	void operator()(A a) { SerPro::send(N, a); }
+	void operator()(A a) {
+		SerPro::send(N, a);
+		SerPro::wait(N);
+	}
+};
+
+template<class SerPro,unsigned int N>
+struct CallSlot< SerPro, N, void (void) > {
+	void operator()() {
+		SerPro::send(N);
+		SerPro::wait(N);
+	}
+};
+
+template<class SerPro,unsigned int N, typename R>
+struct CallSlot<SerPro, N, R (void) > {
+	R operator()() {
+		SerPro::send(N);
+		R ret;
+		SerPro::wait(N,ret);
+		return ret;
+	}
 };
 
 template<class SerPro,unsigned int N, typename A, typename R>
@@ -710,6 +809,7 @@ template<class SerPro,unsigned int N, typename A, typename B>
 struct CallSlot<SerPro, N, void (A,B) > {
 	void operator()(A a, B b) {
 		SerPro::send(N, a, b);
+		SerPro::wait(N);
 	}
 };
 

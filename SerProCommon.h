@@ -21,6 +21,10 @@
 #ifndef __SERPROCOMMON__
 #define __SERPROCOMMON__
 
+#if defined(AVR) || defined (ZPU)
+#define SERPRO_EMBEDDED
+#endif
+
 typedef enum {
 	Master,
 	Slave
@@ -30,9 +34,35 @@ class NoTimer
 {
 public:
 	typedef int timer_t;
-	static inline timer_t addTimer( int (*cb)(void*), int milisseconds, void *data=0){};
-	static inline timer_t cancelTimer(const timer_t &t){};
-	static inline bool defined(const timer_t &t){};
+	static inline timer_t addTimer( int (*cb)(void*), int milisseconds, void *data=0)
+	{
+		return 0;
+	}
+	static inline timer_t cancelTimer(const timer_t &t)
+	{
+		return 0;
+	}
+	static inline bool defined(const timer_t &t) {
+		return false;
+	}
 };
+
+/* Byte order stuff */
+
+#ifdef ZPU
+#define cpu_to_be32(x) x
+#define cpu_to_be16(x) x
+#define be16_to_cpu(x) x
+#define be32_to_cpu(x) x
+#else
+
+#include <byteswap.h>
+
+#define cpu_to_be32(x) bswap_32(x)
+#define cpu_to_be16(x) bswap_16(x)
+#define be16_to_cpu(x) bswap_16(x)
+#define be32_to_cpu(x) bswap_32(x)
+
+#endif
 
 #endif

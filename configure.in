@@ -5,7 +5,8 @@ AC_PROG_LIBTOOL
               
 AC_PROG_CXX
 
-AC_CONFIG_FILES([Makefile serpro.pc])
+PKG_CHECK_MODULES([glib],glib-2.0)
+AC_CONFIG_FILES([Makefile serpro.pc serpro-glib.pc])
 
 AC_OUTPUT
 

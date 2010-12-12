@@ -22,7 +22,10 @@
 #define __SERPRO_ARDUINO_H__
 
 #include <inttypes.h>
+
+#ifdef AVR
 #include <avr/io.h>
+#endif
 
 #define SERPROLIBRARY
 

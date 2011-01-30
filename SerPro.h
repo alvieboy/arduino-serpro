@@ -1,6 +1,6 @@
 /*
  SerPro - A serial protocol for arduino intercommunication
- Copyright (C) 2009 Alvaro Lopes <alvieboy@alvie.com>
+ Copyright (C) 2009-2011 Alvaro Lopes <alvieboy@alvie.com>
 
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
@@ -22,9 +22,65 @@
 #define __SERPRO_H__
 
 #include <inttypes.h>
-#include <string.h> // For strlen
+#include <sys/types.h>
 #include "Packet.h"
 #include "SerProCommon.h"
+
+#ifndef SERPRO_EMBEDDED
+#include <unistd.h>
+#include <malloc.h>
+#include <stdio.h>
+#include <string.h>
+#include <tr1/unordered_map>
+
+struct replyPacket
+{
+	size_t size;
+	int id;
+	unsigned char *buffer;
+	replyPacket():buffer(0),size(0){}
+	~replyPacket(){
+		if (buffer) {
+			delete[] (buffer);
+		}
+	}
+	replyPacket(const replyPacket &p) {
+		if (p.buffer) {
+			buffer=new unsigned char[p.size];
+			memcpy(buffer,p.buffer,p.size);
+			size=p.size;
+		} else {
+			buffer=0;
+			size=0;
+		}
+	}
+
+	replyPacket &operator=(const replyPacket &p)
+	{
+		if (buffer)
+			delete[] buffer;
+
+		if (p.buffer) {
+			buffer=new unsigned char[p.size];
+			memcpy(buffer,p.buffer,p.size);
+			size=p.size;
+		} else {
+			buffer=0;
+			size=0;
+		}
+        return *this;
+	}
+};
+
+struct replyPacketCompare
+{
+	size_t operator()(const replyPacket &a, const replyPacket &b) const {
+		return a.id == b.id;
+	}
+};
+
+#endif
+
 
 // Since GCC 4.3 we cannot have storage class qualifiers on template
 // specializations. However, prior versions require them. I know, it's
@@ -47,25 +103,7 @@
 
 #endif
 
-/* Fixed-size buffer */
 
-template<unsigned int BUFSIZE>
-struct FixedBuffer {
-	static unsigned int const size = BUFSIZE;
-	unsigned char operator[](int i) { return buffer[i]; }
-	unsigned char *buffer;
-};
-
-struct VariableBuffer{
-	const unsigned char *buffer;
-	uint32_t size;
-	VariableBuffer(const unsigned char *b,uint32_t s): buffer(b),size(s) {
-	}
-	VariableBuffer(): buffer(NULL),size(0) {}
-	/*VariableBuffer &operator=(const VariableBuffer&s) {
-
-	} */
-};
 
 template<typename MyProtocol, class A>
 static inline void serialize(const A *const value) {
@@ -114,6 +152,11 @@ static inline void serialize(const VariableBuffer &buf) {
 		MyProtocol::sendData(buf.buffer, buf.size);
 }
 
+template<typename MyProtocol, unsigned int N>
+static inline void serialize(const FixedBuffer<N> &buf) {
+	MyProtocol::sendData(buf.buffer,N);
+}
+
 /* This is pretty much unsafe... */
 #if 0
 template<typename MyProtocol>
@@ -149,7 +192,11 @@ struct maxFunctions<SerPro,0> {
 template<class SerPro,typename A>
 struct deserialize {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static A deser(const unsigned char *b, buffer_size_t &pos);
+	static A deser(const unsigned char *b, buffer_size_t &pos) {
+		A r = *((A*)&b[pos]);
+		pos+=sizeof(A);
+		return r;
+	}
 };
 
 /* To avoid possible errors with unknown structures, we define
@@ -227,7 +274,7 @@ struct deserialize<SerPro,uint32_t> {
 		return value;
 	}
 };
-
+#if 0
 template<class SerPro>
 struct deserialize<SerPro,char*> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
@@ -237,6 +284,7 @@ struct deserialize<SerPro,char*> {
 		return value;
 	}
 };
+#endif
 
 
 template<class SerPro, class STRUCT>
@@ -249,11 +297,10 @@ struct deserialize<SerPro,const STRUCT*> {
 	}
 };
 
-
 template<class SerPro,unsigned int BUFSIZE>
-struct deserialize < SerPro, FixedBuffer<BUFSIZE> > {
+struct deserialize < SerPro, FixedBuffer<BUFSIZE> const &> {
 	typedef typename SerPro::buffer_size_t buffer_size_t;
-	static FixedBuffer<BUFSIZE> deser(const unsigned char *b, buffer_size_t &pos) {
+	static const FixedBuffer<BUFSIZE> deser(const unsigned char *b, buffer_size_t &pos) {
 		FixedBuffer<BUFSIZE> buf;
 		buf.buffer=(unsigned char*)&b[pos];
 		pos+=BUFSIZE;
@@ -351,6 +398,10 @@ struct deserializer<SerPro, void (A,B,C,D,E)> {
 	}
 };
 
+template<unsigned int>
+static inline void handleOOB(const unsigned char *buf, int size)
+{
+}
 
 /*
  Our main class definition.
@@ -365,6 +416,8 @@ struct protocolImplementation
 	typedef typename MyProtocol::command_t command_t;
 	typedef typename MyProtocol::buffer_size_t buffer_size_t;
 	typedef typename MyProtocol::RawBuffer RawBuffer;
+	typedef Serial MySerial;
+    typedef Config MyConfig;
 
 	// callback structure. One for each function we handle. We define both
 	// deserializer and function to call.
@@ -376,10 +429,15 @@ struct protocolImplementation
 	};
 
 	static callback const PROGMEM callbacks[Config::maxFunctions];
+
+	/* Needed stuff for wait reply */
 	static bool isWaitingForReply, replyReady;
 	static command_t expectedReplyCommand;
-	static const unsigned char *replyBuf;
 
+	/*
+	 static unsigned char replyBuf[Config::maxPacketSize];
+	 static buffer_size_t replyBufSize;
+	 */
 	struct VariableBuffer{
 		const unsigned char *buffer;
 		unsigned int size;
@@ -396,6 +454,11 @@ struct protocolImplementation
 		MyProtocol::deferReply();
 	}
 
+#ifndef SERPRO_EMBEDDED
+	typedef std::tr1::unordered_map<size_t, replyPacket> replyMap_t;
+	static replyMap_t replies;
+#endif
+
 	static inline void callFunction(command_t index, const unsigned char *data, buffer_size_t size)
 	{
 		buffer_size_t pos = 0;
@@ -407,15 +470,39 @@ struct protocolImplementation
 		    //fprintf(stderr,"SerPro: INDEX function %d out of bounds!!!!\n",index);
 		} else {
 			if (Config::implementationType == Master) {
-			  //  std::cerr<<"Wait reply "<<isWaitingForReply<<" expect "<<(int)expectedReplyCommand<<std::endl;
-			   // std::cerr<<"Command is "<<(int)index<<std::endl;
+				// Put back
+#ifndef SERPRO_EMBEDDED
+				if (replies.find(index)==replies.end()) {
+					replyPacket r;
+					r.id=index;
+					r.size = size;
+					r.buffer = new unsigned char[size];
+					memcpy(r.buffer,data,size);
+					replies[index] = r;
+				} else {
+					std::cerr<<"WARNING: duplicate entry found"<<std::endl;
+				}
+                /*
+				std::cerr<<"Wait reply "<<isWaitingForReply<<" expect "<<(int)expectedReplyCommand<<std::endl;
+				std::cerr<<"Command is "<<(int)index<<std::endl;
+
 				if (isWaitingForReply && index == expectedReplyCommand) {
 					replyReady = true;
-					replyBuf = data;
+					if (size) {
+						//replyBuf = (unsigned char *)malloc(size);
+						//  	std::cerr<<"Allocating "<<size<<std::endl;
+						memcpy(replyBuf, data, size);
+						replyBufSize=size;
+					} else {
+						//replyBuf=0;
+					}
+					std::cerr<<"Got reply for command "<<(int)index<<std::endl;
 					isWaitingForReply = false;
 				} else {
-					callbacks[index].func(index,data,pos);
-				}
+				callbacks[index].func(index,data,pos);
+				} */
+
+#endif
 			} else {
 				callbacks[index].func(index,data,pos);
 			}
@@ -424,6 +511,8 @@ struct protocolImplementation
 	}
 
 	/* Only for Master */
+#ifndef SERPRO_EMBEDDED
+
 	static void sendPacket(command_t command, uint8_t *payload, size_t payload_size) {
 
 		Packet *p = MyProtocol::createPacket();
@@ -482,16 +571,27 @@ struct protocolImplementation
 		MyProtocol::queueTransmit(p);
 	}
 
+#endif
 
 	static inline void processPacket(const unsigned char *buf,
 									 buffer_size_t size)
 	{
-		buffer_size_t sz = 0; // TODO - put packet size here.
-
+		buffer_size_t sz = size; // TODO - put packet size here.
+		//std::cerr<<"Process packet size "<<size<<std::endl;
 		// Dump facility
 		Dumper<1>(buf,size);
 
 		callFunction(buf[0], buf+1, sz-1);
+	}
+
+	static inline void processOOB(const unsigned char *buf,buffer_size_t size)
+	{
+		handleOOB<1>(buf,size);
+	}
+
+	static inline void sendOOB(const unsigned char *buf,buffer_size_t size)
+	{
+		MyProtocol::sendOOB(buf,size);
 	}
 
 	static inline void processData(uint8_t bIn)
@@ -500,69 +600,104 @@ struct protocolImplementation
 	}
 
 	static inline void send(command_t command) {
-		MyProtocol::startPacket(sizeof(command));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			MyProtocol::sendPostamble();
+		}
 	}
 
 	template<typename A>
 		static void send(command_t command, A value) {
-			MyProtocol::startPacket(sizeof(A)+sizeof(command));
-			MyProtocol::sendPreamble();
-			MyProtocol::sendData(command);
-			serialize<MyProtocol>(value);
-			MyProtocol::sendPostamble();
+			if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+				sendPacket(command,value);
+#endif
+			} else {
+				MyProtocol::startPacket(sizeof(A)+sizeof(command));
+				MyProtocol::sendPreamble();
+				MyProtocol::sendData(command);
+				serialize<MyProtocol>(value);
+				MyProtocol::sendPostamble();
+			}
 		};
 
 	template<typename A,typename B>
 	static void send(command_t command, const A value_a, const B value_b) {
-		MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command,value_a,value_b);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command)+sizeof(A)+sizeof(B));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value_a);
+			serialize<MyProtocol>(value_b);
+			MyProtocol::sendPostamble();
+		}
 	}
 
 	template<typename A,typename B,typename C>
 	static void send(command_t command, const A value_a, const B value_b, const C value_c) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command,value_a,value_b,value_c);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value_a);
+			serialize<MyProtocol>(value_b);
+			serialize<MyProtocol>(value_c);
+			MyProtocol::sendPostamble();
+		}
 	}
 
 	template<typename A,typename B,typename C,typename D>
 	static void send(command_t command, const A value_a, const B value_b,
 					 const C value_c,const D value_d) {
-		buffer_size_t length = 0;
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command,value_a,value_b,value_c,value_d);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value_a);
+			serialize<MyProtocol>(value_b);
+			serialize<MyProtocol>(value_c);
+			serialize<MyProtocol>(value_d);
+			MyProtocol::sendPostamble();
+		}
 	}
 
 	template<typename A,typename B,typename C,typename D,typename E>
 	static void send(command_t command, const A &value_a, const B &value_b,
 					 const C &value_c,const D &value_d,
 					 const E &value_e) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		serialize<MyProtocol>(value_e);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command,value_a,value_b,value_c,value_d,value_e);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value_a);
+			serialize<MyProtocol>(value_b);
+			serialize<MyProtocol>(value_c);
+			serialize<MyProtocol>(value_d);
+			serialize<MyProtocol>(value_e);
+			MyProtocol::sendPostamble();
+		}
 	}
 
 	template<typename A,typename B,typename C,typename D,typename E,typename F>
@@ -570,45 +705,65 @@ struct protocolImplementation
 					 const B value_b, const C value_c,
 					 const D value_d, const E value_e,
 					 const F value_f) {
-		MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
-		MyProtocol::sendPreamble();
-		MyProtocol::sendData(command);
-		serialize<MyProtocol>(value_a);
-		serialize<MyProtocol>(value_b);
-		serialize<MyProtocol>(value_c);
-		serialize<MyProtocol>(value_d);
-		serialize<MyProtocol>(value_e);
-		serialize<MyProtocol>(value_f);
-		MyProtocol::sendPostamble();
+		if (Config::implementationType==Master) {
+#ifndef SERPRO_EMBEDDED
+			sendPacket(command,value_a,value_b,value_c,value_d,value_e,value_f);
+#endif
+		} else {
+			MyProtocol::startPacket(sizeof(command)+ sizeof(A)+sizeof(B)+sizeof(C)+sizeof(D)+sizeof(E)+sizeof(F));
+			MyProtocol::sendPreamble();
+			MyProtocol::sendData(command);
+			serialize<MyProtocol>(value_a);
+			serialize<MyProtocol>(value_b);
+			serialize<MyProtocol>(value_c);
+			serialize<MyProtocol>(value_d);
+			serialize<MyProtocol>(value_e);
+			serialize<MyProtocol>(value_f);
+			MyProtocol::sendPostamble();
+		}
 	}
-
 	static inline RawBuffer getRawBuffer() {
 		return MyProtocol::getRawBuffer();
 	}
-
+#ifndef SERPRO_EMBEDDED
 	template<typename R> static void wait(command_t index, R &target)
 	{
-		expectedReplyCommand = index;
-		isWaitingForReply=true;
+		replyMap_t::iterator reply;
 		do {
 			Serial::waitEvents(true);
-		} while (! replyReady);
-		replyReady=false;
-		//std::cerr<<"Got expected reply"<<std::endl;
-		// Process reply.
-		buffer_size_t pos=0;
-		target = deserialize<protocolImplementation,R>::deser(replyBuf,pos);
+			reply = replies.find(index);
+		} while (reply==replies.end());
+
+		if (reply->second.size) {
+            buffer_size_t pos=0;
+			target = deserialize<protocolImplementation,R>::deser(reply->second.buffer,pos);
+		}
+		replies.erase(reply);
+        /*
+		if (replyBuf) {
+			buffer_size_t pos=0;
+			//Dumper<1>(replyBuf,replyBufSize);
+			target = deserialize<protocolImplementation,R>::deser(replyBuf,pos);
+			//Dumper<1>((unsigned char*)target,sizeof(target));
+		} */
 	}
 
 	static void wait(command_t index)
 	{
-		expectedReplyCommand = index;
-		isWaitingForReply=true;
+		replyMap_t::iterator reply;
 		do {
 			Serial::waitEvents(true);
-		} while (! replyReady);
-		replyReady=false;
+			reply = replies.find(index);
+		} while (reply==replies.end());
+
+		/*if (reply->second.size) {
+            buffer_size_t pos=0;
+			target = deserialize<protocolImplementation,R>::deser(reply->second.buffer,pos);
+		} */
+		replies.erase(reply);
 	}
+#endif
+
 };
 
 
@@ -739,32 +894,33 @@ struct functionSlot<SerPro, N, void (A,B,C)> {
 	template<class SerPro> \
 	void nohandler<SerPro,1>(const unsigned char *b,typename SerPro::buffer_size_t &pos)
 
+#ifndef SERPRO_EMBEDDED
+#define SERPRO_EXTRADEFS(name) \
+       template<> name::replyMap_t name::replies=name::replyMap_t();\
+
+#else
+#define SERPRO_EXTRADEFS(name)
+#endif
 
 #define DECLARE_SERPRO(config,serial,proto,name) \
 	typedef protocolImplementation<config,serial,proto> name; \
-	template<> bool name::isWaitingForReply=false;\
-	template<> bool name::replyReady=false;\
-	template<> const unsigned char *name::replyBuf=NULL;\
-	template<> name::command_t name::expectedReplyCommand=0;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
 	func( name::MyProtocol::getRawBuffer() ); \
 	} \
 	};\
+    SERPRO_EXTRADEFS(name)
 
 #define DECLARE_SERPRO_WITH_TIMER(config,serial,proto,timer,name) \
 	typedef protocolImplementation<config,serial,proto,timer> name; \
-	template<> bool name::isWaitingForReply=false;\
-	template<> bool name::replyReady=false;\
-	template<> const unsigned char *name::replyBuf=NULL;\
-	template<> name::command_t name::expectedReplyCommand=0;\
 	template<> \
 	struct deserializer<name, void (const name::RawBuffer &)> { \
 	static void handle(const unsigned char *b, name::buffer_size_t &pos, void (*func)(const name::RawBuffer &)) { \
 	func( name::MyProtocol::getRawBuffer() ); \
 	} \
 	};\
+    SERPRO_EXTRADEFS(name)
 
 
 #define EXPAND_DELIM ,

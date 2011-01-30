@@ -13,8 +13,11 @@
 #include <util/crc16.h>
 #endif
 
+#ifndef ZPU
 void CRC16_ccitt::update(uint8_t data)
 {
+	crcminustwo = crcminusone;
+	crcminusone = crc;
 #ifndef AVR
 	data ^= crc&0xff;
 	data ^= data << 4;
@@ -24,6 +27,7 @@ void CRC16_ccitt::update(uint8_t data)
 	crc = _crc_ccitt_update(crc, data);
 #endif
 }
+#endif
 
 
 void CRC16::update(uint8_t data)

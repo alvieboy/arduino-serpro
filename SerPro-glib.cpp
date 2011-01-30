@@ -35,7 +35,9 @@ void SerialWrapper::write(const unsigned char *buf, unsigned int size) {
 
 void SerialWrapper::flush() {
 	GError *error = NULL;
+   // write(0x7E); // Test
 	g_io_channel_flush(SerProGLIB::channel,&error);
+//	tcdrain(SerProGLIB::fd);
 }
 
 bool SerialWrapper::waitEvents(bool block) {
@@ -44,6 +46,7 @@ bool SerialWrapper::waitEvents(bool block) {
 
 GLIBTimer::timer_t GLIBTimer::addTimer( int (*cb)(void*), int milisseconds, void *data)
 {
+    //fprintf(stderr,"Add timer %d\n",milisseconds);
 	return g_timeout_add(milisseconds,cb,data);
 }
 
@@ -52,29 +55,32 @@ GLIBTimer::timer_t GLIBTimer::cancelTimer(const timer_t &t) {
 	return 0;
 }
 
-int SerProGLIB::init(const char *device, speed_t baudrate)
+int SerProGLIB::init(const char *device, speed_t baudrate,GMainLoop *loop)
 {
 	fd = open(device, O_RDWR|O_NOCTTY|O_NONBLOCK);
 	if (fd<0) {
 		perror("open");
 		return -1;
 	}
-	return init(fd,baudrate);
+	return init(fd,baudrate,loop);
 }
 
-int SerProGLIB::init(int fdpty, speed_t baudrate)
+int SerProGLIB::init(int fdpty, speed_t baudrate,GMainLoop *l)
 {
 	struct termios termset;
 	GError *error = NULL;
 	int status;
 
-	loop = g_main_loop_new( g_main_context_default(), TRUE );
+	if (l==NULL)
+		loop = g_main_loop_new( g_main_context_default(), TRUE );
+	else
+		loop = l;
 
 	fd=fdpty;
 
 	tcgetattr(fd, &termset);
 	termset.c_iflag = IGNBRK;
-
+	cfmakeraw(&termset);
 	termset.c_oflag &= ~OPOST;
 	termset.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 	termset.c_cflag &= ~(CSIZE | PARENB| HUPCL);
@@ -106,7 +112,7 @@ int SerProGLIB::init(int fdpty, speed_t baudrate)
 	}
 	error = NULL;
 
-	g_io_channel_set_buffered(channel, false);
+	g_io_channel_set_buffered(channel, true);
 	
 
 	g_io_channel_set_flags (channel, G_IO_FLAG_NONBLOCK, &error);
@@ -115,11 +121,16 @@ int SerProGLIB::init(int fdpty, speed_t baudrate)
 	}
 	g_io_channel_set_close_on_unref (channel, TRUE);
 
-	if ((watcher=g_io_add_watch(channel, G_IO_IN, &serial_data_ready, NULL))<0) {
+	/*
+	 if ((watcher=g_io_add_watch(channel, G_IO_IN, &serial_data_ready, NULL))<0) {
+		fprintf(stderr,"Cannot add watch\n");
+		}*/
+
+	if ((watcher=g_io_add_watch_full(channel, G_PRIORITY_HIGH, G_IO_IN, &serial_data_ready, NULL,NULL))<0) {
 		fprintf(stderr,"Cannot add watch\n");
 	}
 
-	fprintf(stderr,"Channel set up OK\n");
+//	fprintf(stderr,"Channel set up OK\n");
 
 	in_request = FALSE;
 	delay_request = FALSE;
@@ -148,13 +159,15 @@ void SerProGLIB::waitConnection()
 gboolean SerProGLIB::serial_data_ready(GIOChannel *source,GIOCondition condition,gpointer data)
 {
 	gsize r,i;
-	gchar c[128];
+	gchar c[8192];
 	GError *error = NULL;
 
-	g_io_channel_read_chars(source,c,sizeof(c),&r,&error);
+	g_io_channel_read_chars(source,c,8192,&r,&error);
 	if (NULL==error)  {
-		for (i=0;i<r;i++)
+		for (i=0;i<r;i++) {
+			//printf("RX %02x %d\n",(unsigned char)c[i]);
 			process((unsigned char)c[i]);
+		}
 	}
 	return TRUE;
 }

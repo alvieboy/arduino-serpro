@@ -67,7 +67,7 @@ struct HDLCConfigMaster: public HDLC_DefaultConfig
 
 struct SerProConfig {
 	static unsigned int const maxFunctions = 255;
-	static unsigned int const maxPacketSize = 1024;
+	static unsigned int const maxPacketSize = 8192;
 	static SerProImplementationType const implementationType = Master;
 	typedef HDLCConfigMaster HDLC;
 };
@@ -95,8 +95,8 @@ struct SerProConfigSlave {
 
 struct SerProGLIB
 {
-	static int init(int fd,speed_t baudrate);
-	static int init(const char *device,speed_t baudrate);
+	static int init(int fd,speed_t baudrate,GMainLoop *loop=NULL);
+	static int init(const char *device,speed_t baudrate,GMainLoop *loop=NULL);
 	static void run();
 	static void runEvents();
 	static void start();

@@ -21,8 +21,14 @@
 #ifndef __SERPROCOMMON__
 #define __SERPROCOMMON__
 
+#include <inttypes.h>
+
 #if defined(AVR) || defined (ZPU)
 #define SERPRO_EMBEDDED
+#endif
+
+#ifndef SERPRO_EMBEDDED
+#include <string.h>
 #endif
 
 typedef enum {
@@ -64,5 +70,71 @@ public:
 #define be32_to_cpu(x) bswap_32(x)
 
 #endif
+
+#ifdef SERPRO_EMBEDDED
+struct VariableBuffer{
+	const unsigned char *buffer;
+	uint32_t size;
+	VariableBuffer(const unsigned char *b,uint32_t s): buffer(b),size(s) {
+	}
+	VariableBuffer(): buffer(0),size(0) {}
+	/*VariableBuffer &operator=(const VariableBuffer&s) {
+	 } */
+};
+#else
+
+struct VariableBuffer{
+	unsigned char *buffer;
+	uint32_t size;
+	VariableBuffer(const unsigned char *b,uint32_t s):size(s) {
+		if(b) {
+			buffer=new unsigned char[s];
+			memcpy(buffer,b,s);
+		}
+	}
+	VariableBuffer(): buffer(0),size(0) {}
+	/*VariableBuffer &operator=(const VariableBuffer&s) {
+	 } */
+	~VariableBuffer() {
+		if(buffer)
+			delete[]buffer;
+	}
+	VariableBuffer(const VariableBuffer &other) {
+		if (buffer)
+			delete[] buffer;
+		buffer=0;
+		size=other.size;
+
+		if (other.buffer) {
+			buffer=new unsigned char[size];
+			memcpy(buffer,other.buffer,size);
+		}
+	}
+	VariableBuffer &operator=(const VariableBuffer&other) {
+		if (buffer)
+			delete[] buffer;
+		buffer=0;
+		size=other.size;
+
+		if (other.buffer) {
+			buffer=new unsigned char[size];
+			memcpy(buffer,other.buffer,size);
+		}
+		return *this;
+	}
+};
+
+#endif
+
+
+
+/* Fixed-size buffer */
+template<unsigned int BUFSIZE>
+struct FixedBuffer {
+	static unsigned int const size = BUFSIZE;
+	unsigned char operator[](int i) const { return buffer[i]; }
+	unsigned char *buffer;
+};
+
 
 #endif

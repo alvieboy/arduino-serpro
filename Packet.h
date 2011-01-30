@@ -22,8 +22,12 @@
 #define __PACKET_H__
 
 #include <inttypes.h>
+#include "SerProCommon.h"
 
 #ifndef SERPRO_EMBEDDED
+
+#include <iostream>
+
 
 class Packet
 {
@@ -33,7 +37,17 @@ public:
 	virtual void append(const uint16_t &b) = 0;
 	virtual void append(const uint32_t &b) = 0;
 
-        template<class STRUCT>
+	void append(const VariableBuffer &buf) {
+		append(buf.size);
+		appendBuffer(buf.buffer, buf.size);
+	}
+
+	template<unsigned int N>
+		void append(const FixedBuffer<N> &buf) {
+			appendBuffer(buf.buffer, N);
+		}
+
+	template<class STRUCT>
 		void append(const STRUCT *s) { appendBuffer((uint8_t*)s,sizeof(STRUCT));}
 
 	virtual void appendBuffer(const uint8_t *buf, size_t size) = 0;

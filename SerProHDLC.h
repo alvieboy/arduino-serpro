@@ -63,8 +63,13 @@ http://www.acacia-net.com/wwwcla/protocol/iso_4335.htm
 
 #ifndef SERPRO_EMBEDDED
 #include <stdio.h>
-#define LOG(m...)   /*fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);*/
-#define LOGN(m...)  /*fprintf(stderr,m);*/
+#ifdef SERPRO_DEBUG
+#define LOG(m...) fprintf(stderr,"SerProHDLC [%d] ",getpid()); fprintf(stderr,m);
+#define LOGN(m...)  fprintf(stderr,m);
+#else
+#define LOG(m...)
+#define LOGN(m...)
+#endif
 #else
 #define LOG(m...)
 #define LOGN(m...)
@@ -195,17 +200,16 @@ public:
 	}
 
 	void append(const uint16_t &value) {
-		append((uint8_t)(value&0xff));
 		append((uint8_t)((value>>8)&0xff));
+		append((uint8_t)(value&0xff));
 	}
 
 	void append(const uint32_t &value) {
-		append((value &0xff));
-		append((value>>8 &0xff));
-		append((value>>16 &0xff));
-		append((value>>24 &0xff));
+		append((uint8_t)(value>>24 &0xff));
+		append((uint8_t)(value>>16 &0xff));
+		append((uint8_t)(value>>8 &0xff));
+		append((uint8_t)(value &0xff));
 	}
-
 
 	uint8_t payload[Config::maxPacketSize];
 	int payload_size;
@@ -319,29 +323,45 @@ typedef enum {
 struct HDLC_DefaultConfig {
 	typedef CRC16_ccitt CRC;
 	static const HDLCImplementationType implementationType = BASIC;
+	static const unsigned int linkTimeout = 1000;
+	static const unsigned int retransmitTimeout = 100;
 };
 
 template<class Config,class Serial,class Implementation,class Timer> class SerProHDLC
 {
 public:
 	/* Buffer */
-	static unsigned char pBuf[Config::maxPacketSize];
+	static unsigned char _pBuf_internal[Config::maxPacketSize];
+	static unsigned char *getBuffer() { return _pBuf_internal+1; } // Enforce alignment
+
 	typedef typename Config::HDLC::CRC CRCTYPE;
 
 	typedef typename CRCTYPE::crc_t crc_t;
 
-	static CRCTYPE incrc,outcrc;
+	static CRCTYPE crcgen; // Only one CRC generator. We cannot TX and RX data on slavemode
+
+	// Queued CRC.
+	static crc_t crcSaveA, crcSaveB;
 
 	typedef uint8_t command_t;
 
+#ifdef AVR
+	typedef uint8_t cpuword_t;
+#else
+    typedef uint32_t cpuword_t;
+#endif
 
 #ifndef SERPRO_EMBEDDED
 	typedef HDLCPacket<Config,Serial> MyPacket;
 	static PacketQueue txQueue, rxQueue;
 	static std::queue<Packet*> inputQueue;
+	static bool linkReady;
 #endif
-
+#ifdef AVR
 	typedef typename best_storage_class< number_of_bytes<Config::maxPacketSize>::bytes >::type buffer_size_t;
+#else
+    typedef unsigned int buffer_size_t;
+#endif
 	//typedef uint16_t buffer_size_t;
 	typedef uint16_t packet_size_t;
 
@@ -349,23 +369,22 @@ public:
 	static packet_size_t pSize,lastPacketSize;
 
 	/* HDLC parameters extracted from frame */
-	static uint8_t inAddressField;
-	static uint8_t inControlField;
+	static cpuword_t inAddressField;
+	static cpuword_t inControlField;
 
 	/* HDLC control data */
-	static uint8_t txSeqNum;        // Transmit sequence number
-	static uint8_t rxNextSeqNum;    // Expected receive sequence number
+	static cpuword_t txSeqNum;        // Transmit sequence number
+	static cpuword_t rxNextSeqNum;    // Expected receive sequence number
 
-	static bool unEscaping;
-	static bool forceEscapingLow;
-	static bool inPacket;
+	static cpuword_t unEscaping;
+	static cpuword_t inPacket;
 
 	struct RawBuffer {
 		unsigned char *buffer;
 		buffer_size_t size;
 	};
 
-	static uint8_t linkFlags;
+	static cpuword_t linkFlags;
 
 #define LINK_FLAG_LINKUP 1
 #define LINK_FLAG_PACKETSENT 2
@@ -437,38 +456,27 @@ public:
 	};
 
 
-	static inline void setEscapeLow(bool a)
-	{
-		forceEscapingLow=a;
-	}
-
 	static inline void dumpPacket() { /* Debuggin only */
+#if 0
 		unsigned i;
 		LOG("Packet: %d bytes\n", lastPacketSize);
 		LOG("Dump (hex): ");
 		for (i=0; i<lastPacketSize; i++) {
-			LOGN("0x%02X ", (unsigned)pBuf[i+2]);
+		LOGN("0x%02X ", (unsigned)pBuf[i+2]);
 		}
 		LOGN("\n");
+#endif
 	}
 	static inline RawBuffer getRawBuffer()
 	{
 		RawBuffer r;
-		r.buffer = pBuf+2;
+		r.buffer = getBuffer()+2;
 		r.size = lastPacketSize;
 		LOG("getRawBuffer() : size %u %u\n", r.size,lastPacketSize);
 		return r;
 	}
 
-	static void sendByte(uint8_t byte)
-	{
-		//LOG("BYTE %02x, force %d\n", byte, forceEscapingLow);
-		if (byte==HDLC_frameFlag || byte==HDLC_escapeFlag || (forceEscapingLow&&byte<0x20)) {
-			Serial::write(HDLC_escapeFlag);
-			Serial::write(byte ^ HDLC_escapeXOR);
-		} else
-			Serial::write(byte);
-	}
+	static void sendByte(uint8_t byte);
 
 	/* Frame types */
 	enum frame_type {
@@ -555,7 +563,7 @@ public:
 			if (Timer::defined(linktimer)) {
 				linktimer = Timer::cancelTimer(linktimer);
 			}
-			linktimer = Timer::addTimer( &linkExpired, 1000);
+			linktimer = Timer::addTimer( &linkExpired, Config::HDLC::linkTimeout);
 			sendUnnumberedFrame( SNURM );
 		}
 	}
@@ -565,12 +573,12 @@ public:
 		uint8_t ifield;
 		ifield = txSeqNum<<1 | rxNextSeqNum<<5 | 0x10;
 		sendByte( ifield );
-		outcrc.update( ifield );
+		crcgen.update( ifield );
 	}
 
 	static void startPacket(packet_size_t len)
 	{
-		outcrc.reset();
+		crcgen.reset();
 		handleEvent<START_XMIT>();
 		pBufPtr=0;
 	}
@@ -590,7 +598,7 @@ public:
 				if (Timer::defined(retransmittimer)) {
 					retransmittimer = Timer::cancelTimer(retransmittimer);
 				}
-				retransmittimer = Timer::addTimer( &retransmitTimerExpired, 500);
+				retransmittimer = Timer::addTimer( &retransmitTimerExpired, Config::HDLC::retransmitTimeout);
 			}
 		}
 #endif
@@ -627,39 +635,21 @@ public:
 	}
 #endif
 
-	static void sendPreamble()
-	{
-		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::HDLC::stationId );
-		outcrc.update( (uint8_t)Config::HDLC::stationId );
-		sendInformationControlField();
-	}
+	static void sendPreamble();
 
 	static void sendPreamble(uint8_t control)
 	{
 		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::HDLC::stationId );
-		outcrc.update( (uint8_t)Config::HDLC::stationId );
+		crcgen.update( (uint8_t)Config::HDLC::stationId );
 		sendByte(control);
-		outcrc.update(control);
+		crcgen.update(control);
 	}
 
-	static void sendPostamble()
-	{
-		CRC16_ccitt::crc_t crc = outcrc.get();
-		sendByte(crc>>8);
-		sendByte(crc & 0xff);
-		Serial::write(HDLC_frameFlag);
-		Serial::flush();
-		handleEvent<END_XMIT>();
-		txSeqNum++;
-		txSeqNum&=0x7; // Cap at 3-bits only.
-
-		linkFlags |= LINK_FLAG_PACKETSENT;
-	}
+	static void sendPostamble();
 	static void sendSUPostamble()
 	{
-		CRC16_ccitt::crc_t crc = outcrc.get();
+		CRC16_ccitt::crc_t crc = crcgen.get();
 		sendByte(crc>>8);
 		sendByte(crc & 0xff);
 		Serial::write(HDLC_frameFlag);
@@ -667,19 +657,24 @@ public:
 		handleEvent<END_XMIT>();
 	}
 
-	static void sendData(const unsigned char * const buf, packet_size_t size)
+	static void sendData(const unsigned char *buf, packet_size_t size)
 	{
-		packet_size_t i;
-		LOG("Sending %d payload\n",size);
-		for (i=0;i<size;i++) {
-			outcrc.update(buf[i]);
-			sendByte(buf[i]);
+		//packet_size_t i;
+		//LOG("Sending %d payload\n",size);
+		while(size--) {
+			crcgen.update(*buf);
+			sendByte(*buf++);
 		}
+		/*
+		for (i=0;i<size;i++) {
+			crcgen.update(buf[i]);
+			sendByte(buf[i]);
+		} */
 	}
 
 	static void sendData(unsigned char c)
 	{
-		outcrc.update(c);
+		crcgen.update(c);
 		sendByte(c);
 	}
 
@@ -687,7 +682,7 @@ public:
 	{
 		startPacket(size);
 		sendPreamble();
-		outcrc.update( command );
+		crcgen.update( command );
 		sendData(command);
 		sendData(buf,size);
 		sendPostamble();
@@ -708,7 +703,7 @@ public:
 	{
 		if (Config::HDLC::implementationType!=MINIMAL) {
 			LOG("Got supervisory frame\n");
-			HDLC_header *h = (HDLC_header*)pBuf;
+			HDLC_header *h = (HDLC_header*)getBuffer();
 			supervisory_command c = (supervisory_command)(h->control.sframe.function);
 			LOG("Got supervisory frame 0x%02x\n", c);
 			switch (c) {
@@ -725,6 +720,7 @@ public:
 
 					checkXmit();
 				}
+				linkReady = true;
 #endif
 				break;
 			case REJ:
@@ -732,6 +728,11 @@ public:
 					LOG("Got REJ for sequence %u\n",h->control.sframe.seq);
 					break;
 				}
+#ifndef SERPRO_EMBEDDED
+			case RNR:
+				linkReady = false;
+				break;
+#endif
 			default:
 				LOG("Unhandled supervisory frame\n");
 			}
@@ -756,7 +757,7 @@ public:
 
 	static void handle_unnumbered()
 	{
-		HDLC_header *h = (HDLC_header*)pBuf;
+		HDLC_header *h = (HDLC_header*)getBuffer();
 		unnumbered_command c = (unnumbered_command)(h->control.value & 0xEC);
 		LOG("Unnumbered frame 0x%02x (0x%02x)\n",c,h->control.value);
 		switch(c) {
@@ -792,11 +793,14 @@ public:
 						linktimer = Timer::cancelTimer(linktimer);
 				}
 				setLinkUP();
+
 			}
 			break;
 		case UI:
 			if (Config::HDLC::implementationType == MINIMAL) {
-				Implementation::processPacket(pBuf+2,pBufPtr-4);
+				Implementation::processPacket(getBuffer()+2,pBufPtr-4);
+			} else {
+				Implementation::processOOB(getBuffer()+2,pBufPtr-4);
 			}
 			break;
 		default:
@@ -810,6 +814,18 @@ public:
 		}
 	}
 
+	static void sendOOB(const unsigned char *buf, unsigned int size)
+	{
+		startPacket(size);
+		Serial::write( HDLC_frameFlag );
+		sendByte( (uint8_t)Config::HDLC::stationId );
+		crcgen.update( (uint8_t)Config::HDLC::stationId );
+		sendByte( 0x03 | UI );
+		crcgen.update( 0x03 | UI);
+		sendData(buf,size);
+		sendSUPostamble();
+	}
+
 	static void sendUnnumberedFrame(unnumbered_command c)
 	{
 		uint8_t v = (uint8_t)c;
@@ -818,27 +834,13 @@ public:
 		startPacket(0);
 		Serial::write( HDLC_frameFlag );
 		sendByte( (uint8_t)Config::HDLC::stationId );
-		outcrc.update( (uint8_t)Config::HDLC::stationId );
+		crcgen.update( (uint8_t)Config::HDLC::stationId );
 		sendByte(v);
-		outcrc.update(v);
+		crcgen.update(v);
 		sendSUPostamble();
 	}
 
-	static void sendSupervisoryFrame(supervisory_command c)
-	{
-		uint8_t v = 0x01;
-		v |= c<<2;
-		v |= (rxNextSeqNum<<5);
-
-		startPacket(0);
-
-		Serial::write( HDLC_frameFlag );
-		sendByte( (uint8_t)Config::HDLC::stationId );
-		outcrc.update( (uint8_t)Config::HDLC::stationId );
-		sendByte(v);
-		outcrc.update(v);
-		sendSUPostamble();
-	}
+	static void sendSupervisoryFrame(supervisory_command c);
 
 	static void ackLastFrame()
 	{
@@ -852,9 +854,9 @@ public:
 			startPacket(0);
 			Serial::write( HDLC_frameFlag );
 			sendByte( (uint8_t)Config::HDLC::stationId );
-			outcrc.update( (uint8_t)Config::HDLC::stationId );
+			crcgen.update( (uint8_t)Config::HDLC::stationId );
 			sendByte(v);
-			outcrc.update(v);
+			crcgen.update(v);
 			sendSUPostamble();
 		}
 	}
@@ -870,36 +872,41 @@ public:
 #endif
 	}
 
-	static void preProcessPacket()
+	static __attribute__((noinline)) void preProcessPacket()
 	{
-		HDLC_header *h = (HDLC_header*)pBuf;
+		HDLC_header *h = (HDLC_header*)getBuffer();
 		/* Check CRC */
 		if (pBufPtr<4) {
 			/* Empty/erroneous packet */
 			LOG("Short packet received, len %u\n",pBufPtr);
 			return;
 		}
-
 		/* Make sure packet is meant for us. We can safely check
 		 this before actually computing CRC */
 
-		packet_size_t i;
+		packet_size_t i = pBufPtr-2;
+        /*
 		incrc.reset();
 		for (i=0;i<pBufPtr-2;i++) {
 			incrc.update(pBuf[i]);
-		}
-		crc_t pcrc = pBuf[i++];
+			}
+			*/
+		crc_t pcrc = getBuffer()[i++];
 		pcrc<<=8;
-		pcrc|=pBuf[i];
-		if (pcrc!=incrc.get()) {
+		pcrc|=getBuffer()[i];
+		if (pcrc!=crcgen.getMinusTwo()) {
 			/* CRC error */
-			LOG("CRC ERROR, expected 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
+			LOG("CRC ERROR, expected 0x%04x, got 0x%04x offset %d\n",
+				(unsigned)crcgen.getMinusTwo(),(unsigned)pcrc,
+				i);
 			handleEvent<CRC_ERROR>();
 			return;
 		}
-		LOG("CRC MATCH 0x%04x, got 0x%04x\n",incrc.get(),pcrc);
+		LOG("CRC MATCH 0x%04x, got 0x%04x\n",crcgen.getMinusTwo(),pcrc);
 		lastPacketSize = pBufPtr-4;
-		LOG("Packet details: destination ID %u, control 0x%02x\n", h->address,h->control.value);
+		LOG("Packet details: destination ID %u, control 0x%02x, size %d\n",
+			h->address,h->control.value,
+			(unsigned)lastPacketSize);
 		dumpPacket();
 		if ((h->control.frame_type.flag & 1) == 0) {
 			/* Information  */
@@ -927,8 +934,8 @@ public:
 					linkFlags &= ~LINK_FLAG_PACKETSENT;
 
 					handleInformationFrame(h);
-
-					Implementation::processPacket(pBuf+2,pBufPtr-4);
+					LOG("Sending packet for processing\n");
+					Implementation::processPacket(getBuffer()+2,pBufPtr-4);
 
 					if (!(linkFlags & LINK_FLAG_PACKETSENT)) {
 						ackLastFrame();
@@ -955,7 +962,7 @@ public:
 
 	static void processData(uint8_t bIn)
 	{
-		//LOG("Process data: %d (0x%02x)\n",bIn,bIn);
+		LOG("Process data: %d (0x%02x)\n",bIn,bIn);
 		if (bIn==HDLC_escapeFlag) {
 			unEscaping=true;
 			return;
@@ -975,7 +982,7 @@ public:
 				pBufPtr = 0;
 				inPacket = true;
 				handleEvent<START_FRAME>();
-				incrc.reset();
+				crcgen.reset();
 			}
 		} else {
 			if (unEscaping) {
@@ -984,7 +991,12 @@ public:
 			}
 
 			if (pBufPtr<Config::maxPacketSize) {
-				pBuf[pBufPtr++]=bIn;
+				getBuffer()[pBufPtr++]=bIn;
+				// Update CRC
+				/*crcSaveB = crcSaveA;
+				crcSaveA = crcgen.get();*/
+				crcgen.update(bIn);
+
 			} else {
 				// Process overrun error
 			}
@@ -996,25 +1008,69 @@ public:
 #define HDLC_QUEUES \
 	template<> PacketQueue SerPro::MyProtocol::txQueue=PacketQueue(); \
 	template<> PacketQueue SerPro::MyProtocol::rxQueue=PacketQueue(); \
-	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();
+	template<> std::queue<Packet*> SerPro::MyProtocol::inputQueue = std::queue<Packet*>();\
+	template<> bool SerPro::MyProtocol::linkReady = true;
 #else
 #define HDLC_QUEUES
 #endif
 
 #define IMPLEMENT_PROTOCOL_SerProHDLC(SerPro) \
 	template<> SerPro::MyProtocol::buffer_size_t SerPro::MyProtocol::pBufPtr=0; \
-	template<> uint8_t SerPro::MyProtocol::txSeqNum=0; \
-	template<> uint8_t SerPro::MyProtocol::rxNextSeqNum=0; \
-	template<> uint8_t SerPro::MyProtocol::linkFlags=0; \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::txSeqNum=0; \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::rxNextSeqNum=0; \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::linkFlags=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
-	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::incrc=CRCTYPE(); \
-	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::outcrc=CRCTYPE(); \
-	template<> bool SerPro::MyProtocol::unEscaping = false; \
-	template<> bool SerPro::MyProtocol::forceEscapingLow = false; \
-	template<> bool SerPro::MyProtocol::inPacket = false; \
-	template<> unsigned char SerPro::MyProtocol::pBuf[]={}; \
+	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::crcgen=CRCTYPE(); \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::unEscaping = 0; \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::inPacket = 0; \
+	template<> SerPro::MyProtocol::crc_t SerPro::MyProtocol::crcSaveA = 0; \
+	template<> SerPro::MyProtocol::crc_t SerPro::MyProtocol::crcSaveB = 0; \
+	template<> unsigned char SerPro::MyProtocol::_pBuf_internal[]={}; \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::linktimer=timer_t(); \
 	template<> SerPro::MyProtocol::timer_t SerPro::MyProtocol::retransmittimer=timer_t(); \
+	template<> void SerPro::MyProtocol::sendByte(uint8_t byte) \
+	{\
+		if (byte==HDLC_frameFlag || byte==HDLC_escapeFlag) {\
+	        SerPro::MySerial::write(HDLC_escapeFlag);\
+			SerPro::MySerial::write(byte ^ HDLC_escapeXOR);\
+		} else\
+			SerPro::MySerial::write(byte);\
+	}\
+	template<> void SerPro::MyProtocol::sendPreamble() \
+	{ \
+	SerPro::MySerial::write( HDLC_frameFlag );\
+	SerPro::MyProtocol::sendByte( (uint8_t)SerPro::MyConfig::HDLC::stationId ); \
+	SerPro::MyProtocol::crcgen.update( (uint8_t)SerPro::MyConfig::HDLC::stationId ); \
+	SerPro::MyProtocol::sendInformationControlField(); \
+	}\
+	template<> void SerPro::MyProtocol::sendSupervisoryFrame(supervisory_command c) \
+	{ \
+		uint8_t v = 0x01;          \
+		v |= c<<2;                 \
+		v |= (rxNextSeqNum<<5);    \
+                                   \
+		startPacket(0);            \
+                                         \
+ 	    SerPro::MySerial::write( HDLC_frameFlag ); \
+	sendByte( (uint8_t)SerPro::MyConfig::HDLC::stationId );   \
+    	crcgen.update( (uint8_t)SerPro::MyConfig::HDLC::stationId );\
+		sendByte(v);                                      \
+		crcgen.update(v);                                 \
+		sendSUPostamble();                                \
+	} \
+	template<> void SerPro::MyProtocol::sendPostamble()     \
+	{                                                       \
+		CRC16_ccitt::crc_t crc = crcgen.get();              \
+		sendByte(crc>>8);                                   \
+		sendByte(crc & 0xff);                               \
+	SerPro::MySerial::write(HDLC_frameFlag);                      \
+		SerPro::MySerial::flush();                                    \
+		handleEvent<END_XMIT>();                            \
+		txSeqNum++;                                         \
+		txSeqNum&=0x7;               \
+                                                            \
+		linkFlags |= LINK_FLAG_PACKETSENT;                  \
+	}                                                       \
     HDLC_QUEUES
 #endif

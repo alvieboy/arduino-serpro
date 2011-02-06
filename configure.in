@@ -1,12 +1,41 @@
 AC_INIT(SerPro.h)
 
-AM_INIT_AUTOMAKE(SerPro,0.0.1)
+m4_define([serpro_major_version], [3])
+m4_define([serpro_minor_version], [0])
+m4_define([serpro_micro_version], [0])
+m4_define([serpro_version],
+          [serpro_major_version.serpro_minor_version.serpro_micro_version])
+
+AM_INIT_AUTOMAKE(SerPro,serpro_version)
 AC_PROG_LIBTOOL
-              
+
+SERPRO_MAJOR_VERSION=serpro_major_version
+SERPRO_MINOR_VERSION=serpro_minor_version
+SERPRO_MICRO_VERSION=serpro_micro_version
+SERPRO_VERSION=serpro_version
+
+m4_define([serpro_lt_release], [serpro_major_version.serpro_minor_version])
+
+AC_SUBST(SERPRO_MAJOR_VERSION)
+AC_SUBST(SERPRO_MINOR_VERSION)
+AC_SUBST(SERPRO_MICRO_VERSION)
+AC_SUBST(SERPRO_VERSION)
+
+m4_define([serpro_lt_current],
+          [m4_eval(100 * serpro_minor_version + serpro_micro_version)])
+
+LT_RELEASE=serpro_minor_version
+LT_CURRENT=serpro_major_version
+LT_REVISION=serpro_micro_version
+
+AC_SUBST(LT_RELEASE)
+AC_SUBST(LT_CURRENT)
+AC_SUBST(LT_REVISION)
+
 AC_PROG_CXX
 
 PKG_CHECK_MODULES([glib],glib-2.0)
-AC_CONFIG_FILES([Makefile serpro.pc serpro-glib.pc])
+AC_CONFIG_FILES([Makefile serpro-3.0.pc serpro-glib-3.0.pc serpro-linux-3.0.pc])
 
 AC_OUTPUT
 

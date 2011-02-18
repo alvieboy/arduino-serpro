@@ -22,11 +22,11 @@
 #define __SERPRO_H__
 
 #include <inttypes.h>
-#include <sys/types.h>
 #include "Packet.h"
 #include "SerProCommon.h"
 
 #ifndef SERPRO_EMBEDDED
+#include <sys/types.h>
 #include <unistd.h>
 #include <malloc.h>
 #include <stdio.h>
@@ -38,7 +38,7 @@ struct replyPacket
 	size_t size;
 	int id;
 	unsigned char *buffer;
-	replyPacket():buffer(0),size(0){}
+	replyPacket():size(0),buffer(0){}
 	~replyPacket(){
 		if (buffer) {
 			delete[] (buffer);
@@ -167,7 +167,7 @@ MAYBESTATIC void serialize(const char *string) {
 
 /* Data dumper */
 template<unsigned int>
-static void Dumper(const unsigned char *buffer,size_t size)
+static void Dumper(const unsigned char *buffer,unsigned int size)
 {
 }
 
@@ -434,6 +434,7 @@ struct protocolImplementation
 	static bool isWaitingForReply, replyReady;
 	static command_t expectedReplyCommand;
 
+	static uint8_t linkFlags;
 	/*
 	 static unsigned char replyBuf[Config::maxPacketSize];
 	 static buffer_size_t replyBufSize;
@@ -482,26 +483,6 @@ struct protocolImplementation
 				} else {
 					std::cerr<<"WARNING: duplicate entry found"<<std::endl;
 				}
-                /*
-				std::cerr<<"Wait reply "<<isWaitingForReply<<" expect "<<(int)expectedReplyCommand<<std::endl;
-				std::cerr<<"Command is "<<(int)index<<std::endl;
-
-				if (isWaitingForReply && index == expectedReplyCommand) {
-					replyReady = true;
-					if (size) {
-						//replyBuf = (unsigned char *)malloc(size);
-						//  	std::cerr<<"Allocating "<<size<<std::endl;
-						memcpy(replyBuf, data, size);
-						replyBufSize=size;
-					} else {
-						//replyBuf=0;
-					}
-					std::cerr<<"Got reply for command "<<(int)index<<std::endl;
-					isWaitingForReply = false;
-				} else {
-				callbacks[index].func(index,data,pos);
-				} */
-
 #endif
 			} else {
 				callbacks[index].func(index,data,pos);
@@ -576,8 +557,7 @@ struct protocolImplementation
 	static inline void processPacket(const unsigned char *buf,
 									 buffer_size_t size)
 	{
-		buffer_size_t sz = size; // TODO - put packet size here.
-		//std::cerr<<"Process packet size "<<size<<std::endl;
+		buffer_size_t sz = size; 
 		// Dump facility
 		Dumper<1>(buf,size);
 
@@ -762,6 +742,26 @@ struct protocolImplementation
 		} */
 		replies.erase(reply);
 	}
+#ifndef SERPRO_EMBEDDED
+	static void initPostLink(uint8_t val){
+		// TODO: save peer properties.
+		std::cerr<<"Link type "<<val<<std::endl;
+		linkFlags = val;
+	}
+
+	static void initLayer(); 
+
+#endif
+
+	static uint8_t ____serpro_init_request()
+	{
+		// TODO: Return proper configuration here
+#ifdef ZPU
+		return 0x00; // Big endian
+#else
+        return 0x01; // Litlle endian
+#endif
+	}
 #endif
 
 };
@@ -877,8 +877,14 @@ struct functionSlot<SerPro, N, void (A,B,C)> {
 	}
 };
 
+typedef enum {
+	SERPRO_LINK_UP,
+	SERPRO_LINK_DOWN
+} serpro_event_type;
 
-//#define DECLARE_FUNCTION(x)
+template<serpro_event_type t>
+static inline void handleEvent() {
+};
 
 #define EXPORT_FUNCTION(n, name) \
 	template<class SerPro> \
@@ -896,7 +902,8 @@ struct functionSlot<SerPro, N, void (A,B,C)> {
 
 #ifndef SERPRO_EMBEDDED
 #define SERPRO_EXTRADEFS(name) \
-       template<> name::replyMap_t name::replies=name::replyMap_t();\
+	template<> name::replyMap_t name::replies=name::replyMap_t();
+
 
 #else
 #define SERPRO_EXTRADEFS(name)
@@ -929,16 +936,35 @@ struct functionSlot<SerPro, N, void (A,B,C)> {
 
 #include "preprocessor_table.h"
 
+#ifndef SERPRO_EMBEDDED
+#define SERPRO_IMPL_EXTRADEFS(name) \
+	IMPORT_FUNCTION(0,_____serpro_initialize,uint8_t(void)); \
+    \
+	template<> void name::initLayer() { \
+		std::cerr<<"Initializing"<<std::endl; \
+		initPostLink(_____serpro_initialize());  \
+		std::cerr<<"LINK UP"<<std::endl; \
+	}
+
+#else
+#define SERPRO_IMPL_EXTRADEFS(name) \
+	EXPORT_FUNCTION(0,name::_____serpro_init_request);
+#endif
+
 #define IMPLEMENT_SERPRO(num,name,proto) \
 	typedef void(*serpro_function_type)(void); \
 	typedef void(*serpro_deserializer_type)(const unsigned char*, name::buffer_size_t& pos,void(*)(void)); \
+	template<> uint8_t name::linkFlags=0; \
 	template<> \
 	name::callback const name::callbacks[] = { \
 	DO_EXPAND(num) \
 	}; \
-	IMPLEMENT_PROTOCOL_##proto(name)
+	SERPRO_IMPL_EXTRADEFS(name) \
+	IMPLEMENT_PROTOCOL_##proto(name) \
 
-#define SERPRO_EVENT(event) template<> void handleEvent<event>()
+
+
+#define SERPRO_EVENT(event) template<> void LL_handleEvent<event>()
 
 template<class SerPro,unsigned int N, typename A>
 struct CallSlot {

@@ -210,6 +210,15 @@ public:
 		append((uint8_t)(value>>8 &0xff));
 		append((uint8_t)(value &0xff));
 	}
+	void append(const int8_t &b) {
+		append((uint8_t)b);
+	}
+	void append(const int16_t &b) {
+		append((uint16_t)b);
+	}
+	void append(const int32_t &b) {
+		append((uint32_t)b);
+	}
 
 	uint8_t payload[Config::maxPacketSize];
 	int payload_size;
@@ -274,7 +283,7 @@ public:
 	}
 	void ackUpTo(uint8_t num)
 	{
-		LOG("ACK'ing up to sequance %u\n",num);
+		LOG("ACK'ing up to sequence %u\n",num);
 		uint8_t i = ack;
 		while (i!=num) {
 			if (slots[i]) {
@@ -311,7 +320,7 @@ typedef enum {
 } event_type;
 
 template<event_type t>
-static inline void handleEvent() {
+static inline void LL_handleEvent() {
 }
 
 typedef enum {
@@ -324,7 +333,7 @@ struct HDLC_DefaultConfig {
 	typedef CRC16_ccitt CRC;
 	static const HDLCImplementationType implementationType = BASIC;
 	static const unsigned int linkTimeout = 1000;
-	static const unsigned int retransmitTimeout = 100;
+	static const unsigned int retransmitTimeout = 1000;
 };
 
 template<class Config,class Serial,class Implementation,class Timer> class SerProHDLC
@@ -579,7 +588,7 @@ public:
 	static void startPacket(packet_size_t len)
 	{
 		crcgen.reset();
-		handleEvent<START_XMIT>();
+		LL_handleEvent<START_XMIT>();
 		pBufPtr=0;
 	}
 
@@ -654,7 +663,7 @@ public:
 		sendByte(crc & 0xff);
 		Serial::write(HDLC_frameFlag);
 		Serial::flush();
-		handleEvent<END_XMIT>();
+		LL_handleEvent<END_XMIT>();
 	}
 
 	static void sendData(const unsigned char *buf, packet_size_t size)
@@ -746,13 +755,13 @@ public:
 	static void setLinkUP()
 	{
 		linkFlags |= LINK_FLAG_LINKUP;
-		handleEvent<LINK_UP>();
+		LL_handleEvent<LINK_UP>();
 		checkXmit();
 	}
 	static void setLinkDOWN()
 	{
 		linkFlags &= ~LINK_FLAG_LINKUP;
-		handleEvent<LINK_DOWN>();
+		LL_handleEvent<LINK_DOWN>();
 	}
 
 	static void handle_unnumbered()
@@ -765,10 +774,11 @@ public:
 			if (Config::HDLC::implementationType == BASIC ||
 				Config::HDLC::implementationType == FULL ) {
 
-				sendUnnumberedFrame(UA);
 				// Reset tx/rx sequences
 				txSeqNum=0;
 				rxNextSeqNum=0;
+
+				sendUnnumberedFrame(UA);
 				LOG("Link up, NRM\n");
 				setLinkUP();
 			}
@@ -787,6 +797,7 @@ public:
 				// Reset tx/rx sequences
 				txSeqNum=0;
 				rxNextSeqNum=0;
+
 				LOG("Link up, by our request\n");
 				if (Config::implementationType==Master) {
 					if (Timer::defined(linktimer))
@@ -899,7 +910,16 @@ public:
 			LOG("CRC ERROR, expected 0x%04x, got 0x%04x offset %d\n",
 				(unsigned)crcgen.getMinusTwo(),(unsigned)pcrc,
 				i);
-			handleEvent<CRC_ERROR>();
+#if 1
+			{
+				unsigned int mn=crcgen.getMinusTwo();
+				mn<<=16;
+				mn+=pcrc;
+
+				sendOOB((unsigned char*)&mn,sizeof(mn));
+			}
+#endif
+			LL_handleEvent<CRC_ERROR>();
 			return;
 		}
 		LOG("CRC MATCH 0x%04x, got 0x%04x\n",crcgen.getMinusTwo(),pcrc);
@@ -919,6 +939,7 @@ public:
 				sendSupervisoryFrame(REJ);
 
 				LOG("************* INVALID FRAME RECEIVED ***************\n");
+				LOG("* Expected %u, got %u\n",rxNextSeqNum,h->control.iframe.txseq);
 			} else {
 				// Check acks
 
@@ -973,7 +994,7 @@ public:
 			if (inPacket) {
 				/* End of packet */
 				if (pBufPtr) {
-					handleEvent<END_FRAME>();
+					LL_handleEvent<END_FRAME>();
 					preProcessPacket();
 					inPacket = false;
 				}
@@ -981,7 +1002,7 @@ public:
 				/* Beginning of packet */
 				pBufPtr = 0;
 				inPacket = true;
-				handleEvent<START_FRAME>();
+				LL_handleEvent<START_FRAME>();
 				crcgen.reset();
 			}
 		} else {
@@ -1066,7 +1087,7 @@ public:
 		sendByte(crc & 0xff);                               \
 	SerPro::MySerial::write(HDLC_frameFlag);                      \
 		SerPro::MySerial::flush();                                    \
-		handleEvent<END_XMIT>();                            \
+		LL_handleEvent<END_XMIT>();                            \
 		txSeqNum++;                                         \
 		txSeqNum&=0x7;               \
                                                             \

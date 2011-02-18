@@ -1,10 +1,10 @@
-CXXFLAGS=-I.. $(shell pkg-config --cflags glib-2.0)
-LIBS=$(shell pkg-config --libs glib-2.0)
+CXXFLAGS=$(shell pkg-config --cflags glib-2.0 serpro-glib-3.0)
+LIBS=$(shell pkg-config --libs glib-2.0 serpro-glib-3.0)
 LDFLAGS=
 
-OBJECTS=crc16.o SerPro-glib.o
+BINS=example1-slave example1-master example-arduino
 
-all: example1-slave example1-master example-arduino
+all: $(BINS)
 
 example1-slave: example1-slave.o $(OBJECTS)
 	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS)
@@ -15,8 +15,6 @@ example1-master: example1-master.o $(OBJECTS)
 example-arduino: example-arduino.o $(OBJECTS)
 	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS) -lutil
                           
-SerPro-glib.o: ../SerPro-glib.cpp
-	$(CXX) $(CXXFLAGS) -c  $^ -o $@ 
-
-crc16.o: ../crc16.cpp
-	$(CXX) $(CXXFLAGS) -c  $^ -o $@ 
+clean:
+	rm -f $(BINS) *.o
+	

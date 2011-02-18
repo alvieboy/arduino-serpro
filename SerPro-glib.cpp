@@ -130,7 +130,7 @@ int SerProGLIB::init(int fdpty, speed_t baudrate,GMainLoop *l)
 		fprintf(stderr,"Cannot add watch\n");
 	}
 
-//	fprintf(stderr,"Channel set up OK\n");
+		fprintf(stderr,"Channel set up OK\n");
 
 	in_request = FALSE;
 	delay_request = FALSE;
@@ -175,8 +175,8 @@ gboolean SerProGLIB::serial_data_ready(GIOChannel *source,GIOCondition condition
 void SerProGLIB::onConnect(void (*func)(void))
 {
 	connectCB = func;
-
 }
+
 gboolean connectEventImpl(gpointer arg)
 {
 	void (*func)(void) = (void(*)(void))arg;
@@ -185,9 +185,20 @@ gboolean connectEventImpl(gpointer arg)
 	return FALSE;
 }
 
+static gboolean initSerPro(void *connectCB)
+{
+	SerProGLIB::initLayer();
+	g_timeout_add( 0, &connectEventImpl, (void*)connectCB);
+	SerProGLIB::connected = true;
+	return FALSE;
+}
+
 void SerProGLIB::connectEvent() {
-	connected = true;
-    g_timeout_add( 0, &connectEventImpl, (void*)connectCB);
+	// Call SERPRO initialization, but needs to be outside this loop
+	// TODO
+
+	//g_timeout_add( 0, &initSerPro, (void*)connectCB);
+	g_timeout_add( 0, &connectEventImpl, (void*)connectCB);
 }
 
 

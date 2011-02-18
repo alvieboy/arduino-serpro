@@ -86,10 +86,11 @@ struct SerProConfigSlave {
    DECLARE_SERPRO( SerProConfigSlave, SerialWrapper, SerProHDLC, SerPro)
 
 #define SERPRO_GLIB_END() \
+	SERPRO_EVENT(LINK_UP) { SerProGLIB::connectEvent(); } \
 	IMPLEMENT_SERPRO(255,SerPro,SerProHDLC); \
 	void SerProGLIB::start() { SerPro::connect(); } \
-	void SerProGLIB::process(unsigned char c) { SerPro::processData(c); } \
-	SERPRO_EVENT(LINK_UP) { SerProGLIB::connectEvent(); }
+    void SerProGLIB::initLayer() { SerPro::initLayer(); } \
+	void SerProGLIB::process(unsigned char c) { SerPro::processData(c); }
 
 
 
@@ -104,6 +105,7 @@ struct SerProGLIB
 	static gboolean serial_data_ready(GIOChannel *source, GIOCondition condition, gpointer data);
 
 	static void process(unsigned char);
+	static void initLayer();
 
 	static void onConnect(void (*func)(void));
 	static void connectEvent();

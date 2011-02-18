@@ -2,7 +2,7 @@
 
 LIBFILES_1="SerProArduino.h crc16.cpp"
 
-LIBFILES_2="crc16.h Packet.h SerProCommon.h SerProHDLC.h IPStack.h  preprocessor_table.h SerProArduino.h  SerPro.h SerProPacket.h"
+LIBFILES_2="crc16.h Packet.h SerProCommon.h SerProHDLC.h  preprocessor_table.h SerProArduino.h  SerPro.h SerProPacket.h"
 
 tmpdir=`mktemp -d`;
 [ -d ${tmpdir} ] || exit -1

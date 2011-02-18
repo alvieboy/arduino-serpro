@@ -3,8 +3,6 @@
 SERPRO_ARDUINO_BEGIN();
 
 
-SERPRO_ARDUINO_END();
-
 void setup()
 {
 }
@@ -15,3 +13,5 @@ void loop()
 		SerPro::processData(Serial.read());
 	}
 }
+
+SERPRO_ARDUINO_END();

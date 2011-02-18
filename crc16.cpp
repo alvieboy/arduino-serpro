@@ -62,3 +62,21 @@ void CRC16_rfc1549::update(uint8_t data)
 }
 
 #endif
+
+// MOVE this to other file
+
+#ifdef AVR
+uint16_t bswap_16(uint16_t v)
+{
+	return (v>>8) | ((v & 0xff) << 8);
+
+}
+uint32_t bswap_32(uint32_t v)
+{
+	return ((v>>24)
+			|((v&0x00ff0000)>>8)
+			|((v&0x0000ff00)<<8)
+			|((v&0x000000ff)<<24));
+#endif
+
+

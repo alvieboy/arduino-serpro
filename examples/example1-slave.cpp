@@ -1,4 +1,5 @@
-#include <SerPro-glib.h>
+//#define SERPRO_DEBUG 1
+#include <SerPro/SerPro-glib.h>
 
 SERPRO_GLIB_SLAVE_BEGIN();
 
@@ -24,7 +25,7 @@ int main(int argc, char **argv)
 	if (argc<2)
 		return -1;
 
-	if (SerProGLIB::init(argv[1])<0)
+	if (SerProGLIB::init(argv[1],B115200)<0)
 		return -1;
 
 	SerProGLIB::run();

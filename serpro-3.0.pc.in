@@ -6,5 +6,5 @@ includedir=@includedir@
 Name: SerPro
 Description: SerPro library
 Version: @VERSION@
-Libs: -L${libdir} -lserpro
-Cflags: 
+Libs: -L${libdir} -lserpro-3.0
+Cflags: -I${includedir}/serpro-3.0

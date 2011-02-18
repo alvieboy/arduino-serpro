@@ -1,4 +1,6 @@
-#include <SerPro-glib.h>
+//#define SERPRO_DEBUG 1
+
+#include <SerPro/SerPro-glib.h>
 #include <pty.h>
 
 SERPRO_GLIB_BEGIN();
@@ -28,11 +30,12 @@ int main()
 	}
 	fprintf(stderr,"Opened PTY %s\n", device);
 
-	if (SerProGLIB::init(master)<0)
+	if (SerProGLIB::init(master,B115200)<0)
 		return -1;
 
 	switch (fork()) {
 	case 0:
+        close(master);
 		return execl("./example1-slave","example1-slave", device, NULL);
 	default:
 		break;
@@ -40,5 +43,6 @@ int main()
 
 	SerProGLIB::onConnect( &connect );
 	SerProGLIB::start();
+    SerProGLIB::waitConnection();
 	SerProGLIB::run();
 }

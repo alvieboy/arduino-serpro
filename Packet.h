@@ -37,6 +37,10 @@ public:
 	virtual void append(const uint16_t &b) = 0;
 	virtual void append(const uint32_t &b) = 0;
 
+	virtual void append(const int8_t &b) = 0;
+	virtual void append(const int16_t &b) = 0;
+	virtual void append(const int32_t &b) = 0;
+
 	void append(const VariableBuffer &buf) {
 		append(buf.size);
 		appendBuffer(buf.buffer, buf.size);

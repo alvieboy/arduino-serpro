@@ -55,20 +55,27 @@ public:
 
 /* Byte order stuff */
 
-#ifdef ZPU
-#define cpu_to_be32(x) x
-#define cpu_to_be16(x) x
-#define be16_to_cpu(x) x
-#define be32_to_cpu(x) x
+#if defined(ZPU)
+# define cpu_to_be32(x) x
+# define cpu_to_be16(x) x
+# define be16_to_cpu(x) x
+# define be32_to_cpu(x) x
+#elif defined(AVR)
+
+extern uint16_t bswap_16(uint16_t);
+extern uint32_t bswap_32(uint32_t);
+
+# define cpu_to_be32(x) bswap_32(x)
+# define cpu_to_be16(x) bswap_16(x)
+# define be16_to_cpu(x) bswap_16(x)
+# define be32_to_cpu(x) bswap_32(x)
+
 #else
-
-#include <byteswap.h>
-
-#define cpu_to_be32(x) bswap_32(x)
-#define cpu_to_be16(x) bswap_16(x)
-#define be16_to_cpu(x) bswap_16(x)
-#define be32_to_cpu(x) bswap_32(x)
-
+# include <byteswap.h>
+# define cpu_to_be32(x) bswap_32(x)
+# define cpu_to_be16(x) bswap_16(x)
+# define be16_to_cpu(x) bswap_16(x)
+# define be32_to_cpu(x) bswap_32(x)
 #endif
 
 #ifdef SERPRO_EMBEDDED

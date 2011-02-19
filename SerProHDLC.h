@@ -152,7 +152,7 @@ public:
 	}
 
 	void append(const uint8_t &b) {
-		LOG("Packet add: %02x\n",b);
+		//LOG("Packet add: %02x\n",b);
 		payload[payload_size++] = b;
 	}
 
@@ -239,7 +239,7 @@ public:
 	};
 
 	uint8_t toBeAcked() {
-		LOG("Packets to be acked: %d\n",(tx-ack)&0x7);
+		//LOG("Packets to be acked: %d\n",(tx-ack)&0x7);
 		return (tx - ack) & 0x7;
 	}
 
@@ -380,6 +380,7 @@ public:
 	/* HDLC parameters extracted from frame */
 	static cpuword_t inAddressField;
 	static cpuword_t inControlField;
+	static cpuword_t allowedPacketsInTransit;
 
 	/* HDLC control data */
 	static cpuword_t txSeqNum;        // Transmit sequence number
@@ -613,12 +614,18 @@ public:
 #endif
 	}
 
+#ifndef SERPRO_EMBEDDED
+	static int getQueueSize()
+	{
+		return inputQueue.size();
+	}
+#endif
 	static void checkXmit()
 	{
 #ifndef SERPRO_EMBEDDED
 		if (Config::implementationType==Master) {
 			LOG("Checking Xmit queue...\n");
-			if (txQueue.toBeAcked()==0 && inputQueue.size()>0) {
+			if (txQueue.toBeAcked()<allowedPacketsInTransit && inputQueue.size()>0) {
 				Packet *p = inputQueue.front();
 				inputQueue.pop();
 				LOG("Queuing packet for transmission %p\n",p);
@@ -632,7 +639,7 @@ public:
 	static int queueTransmit(Packet *p)
 	{
 		if (Config::implementationType==Master) {
-			if (txQueue.toBeAcked()==0) {
+			if (txQueue.toBeAcked() < allowedPacketsInTransit) {
 				txQueue.queue( p );
 				startXmit();
 			} else {
@@ -704,7 +711,9 @@ public:
 #ifndef SERPRO_EMBEDDED
 	static Packet *createPacket()
 	{
-		return new MyPacket();
+		Packet * p =new MyPacket();
+		LOG("Created packet at %p\n",p);
+		return p;
 	}
 #endif
 
@@ -1040,6 +1049,7 @@ public:
 	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::txSeqNum=0; \
 	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::rxNextSeqNum=0; \
 	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::linkFlags=0; \
+	template<> SerPro::MyProtocol::cpuword_t SerPro::MyProtocol::allowedPacketsInTransit=1; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::pSize=0; \
 	template<> SerPro::MyProtocol::packet_size_t SerPro::MyProtocol::lastPacketSize=0; \
 	template<> SerPro::MyProtocol::CRCTYPE SerPro::MyProtocol::crcgen=CRCTYPE(); \

@@ -180,8 +180,10 @@ void SerProGLIB::onConnect(void (*func)(void))
 gboolean connectEventImpl(gpointer arg)
 {
 	void (*func)(void) = (void(*)(void))arg;
+//	printf("Calling %p\n",func);
 	if (func)
 		func();
+	SerProGLIB::connected = true;
 	return FALSE;
 }
 
@@ -198,6 +200,7 @@ void SerProGLIB::connectEvent() {
 	// TODO
 
 	//g_timeout_add( 0, &initSerPro, (void*)connectCB);
+//	printf("Connect event %p\n",connectCB);
 	g_timeout_add( 0, &connectEventImpl, (void*)connectCB);
 }
 

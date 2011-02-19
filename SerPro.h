@@ -431,7 +431,7 @@ struct protocolImplementation
 	static callback const PROGMEM callbacks[Config::maxFunctions];
 
 	/* Needed stuff for wait reply */
-	static bool isWaitingForReply, replyReady;
+	static bool isWaitingForReply, replyReady, isSynchronous;
 	static command_t expectedReplyCommand;
 
 	static uint8_t linkFlags;
@@ -481,7 +481,7 @@ struct protocolImplementation
 					memcpy(r.buffer,data,size);
 					replies[index] = r;
 				} else {
-					std::cerr<<"WARNING: duplicate entry found"<<std::endl;
+					//std::cerr<<"WARNING: duplicate entry found"<<std::endl;
 				}
 #endif
 			} else {
@@ -751,6 +751,11 @@ struct protocolImplementation
 
 	static void initLayer(); 
 
+	static void setSynchronous(bool v)
+	{
+		isSynchronous=v;
+	}
+
 #endif
 
 	static uint8_t ____serpro_init_request()
@@ -902,7 +907,8 @@ static inline void handleEvent() {
 
 #ifndef SERPRO_EMBEDDED
 #define SERPRO_EXTRADEFS(name) \
-	template<> name::replyMap_t name::replies=name::replyMap_t();
+	template<> name::replyMap_t name::replies=name::replyMap_t(); \
+	template<> bool name::isSynchronous = true;
 
 
 #else
@@ -974,7 +980,8 @@ template<class SerPro,unsigned int N, typename A>
 struct CallSlot< SerPro, N, void (A) > {
 	void operator()(A a) {
 		SerPro::send(N, a);
-		SerPro::wait(N);
+		if (SerPro::isSynchronous)
+			SerPro::wait(N);
 	}
 };
 
@@ -982,7 +989,8 @@ template<class SerPro,unsigned int N>
 struct CallSlot< SerPro, N, void (void) > {
 	void operator()() {
 		SerPro::send(N);
-		SerPro::wait(N);
+		if (SerPro::isSynchronous)
+			SerPro::wait(N);
 	}
 };
 
@@ -1020,7 +1028,8 @@ template<class SerPro,unsigned int N, typename A, typename B>
 struct CallSlot<SerPro, N, void (A,B) > {
 	void operator()(A a, B b) {
 		SerPro::send(N, a, b);
-		SerPro::wait(N);
+		if (SerPro::isSynchronous)
+			SerPro::wait(N);
 	}
 };
 
@@ -1038,7 +1047,8 @@ template<class SerPro,unsigned int N, typename A, typename B, typename C>
 struct CallSlot<SerPro, N, void (A,B,C) > {
 	void operator()(A a, B b, C c) {
 		SerPro::send(N, a, b, c);
-		SerPro::wait(N);
+		if (SerPro::isSynchronous)
+			SerPro::wait(N);
 	}
 };
 

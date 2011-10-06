@@ -107,8 +107,8 @@ struct VariableBuffer{
 			delete[]buffer;
 	}
 	VariableBuffer(const VariableBuffer &other) {
-		if (buffer)
-			delete[] buffer;
+		/*if (buffer)
+			delete[] buffer;*/
 		buffer=0;
 		size=other.size;
 

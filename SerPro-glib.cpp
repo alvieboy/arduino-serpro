@@ -20,6 +20,11 @@
 
 #include <SerPro-glib.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <stdlib.h>
+#include <string.h>
 
 void SerialWrapper::write(uint8_t v) {
 	GError *error = NULL;
@@ -57,10 +62,40 @@ GLIBTimer::timer_t GLIBTimer::cancelTimer(const timer_t &t) {
 
 int SerProGLIB::init(const char *device, speed_t baudrate,GMainLoop *loop)
 {
-	fd = open(device, O_RDWR|O_NOCTTY|O_NONBLOCK);
-	if (fd<0) {
-		perror("open");
-		return -1;
+	if (strncmp(device,"socket:",7)==0) {
+		const char *p = device + 7;
+		if (strncmp(p,"tcp/",4)==0) {
+			struct sockaddr_in sock;
+
+			p+=4;
+
+            /* Try TCP connection */
+			fd = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+			if(fd<0) {
+				perror("socket");
+				return -1;
+			}
+            memset(&sock,0,sizeof(sock));
+			sock.sin_family = AF_INET;
+			sock.sin_port = htons(atoi(p));
+			inet_aton("127.0.0.1",&sock.sin_addr);
+
+			if (connect(fd,(struct sockaddr*)&sock,sizeof(sockaddr_in))<0) {
+				perror("connect");
+				close(fd);
+                return -1;
+			}
+
+		} else {
+			fprintf(stderr,"Protocol not supported\n");
+			return -1;
+		}
+	} else {
+		fd = open(device, O_RDWR|O_NOCTTY|O_NONBLOCK);
+		if (fd<0) {
+			perror("open");
+			return -1;
+		}
 	}
 	return init(fd,baudrate,loop);
 }

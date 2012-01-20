@@ -1,4 +1,4 @@
-#include <SerProArduino.h>
+#include <SerPro3.h>
 
 SERPRO_ARDUINO_BEGIN();
 

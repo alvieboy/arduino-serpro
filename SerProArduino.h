@@ -32,7 +32,7 @@
 #include <serpro/SerPro.h>
 #include <serpro/SerProHDLC.h>
 
-#include <WProgram.h>
+#include <Arduino.h>
 
 
 struct SerialWrapper
